@@ -16,4 +16,20 @@ dist/               Build output — packaged zips, not committed
 
 ## Install
 
-Extensions install globally (under `~/.halo/global/`) from a zip. The manifest format and install flow are being designed in the main repo; details will land here with the first extension.
+Extensions install globally (under `~/.halo/global/`). Three ways:
+
+- **Agent**: `/extension install <id>` — downloads the latest `<id>-v*` release zip from this repo.
+- **Admin**: Extensions panel → upload the `<id>-<version>.zip` from a GitHub release.
+- **Manual**: `cp -r extensions/<id> ~/.halo/global/extensions/` (the directory *is* the installed form — no build step).
+
+## Publishing
+
+One tag = one release = one zip, tagged `<id>-v<version>`:
+
+```bash
+# bump "version" in extensions/<id>/halo-extension.json, commit, then:
+node scripts/pack.mjs extensions/<id>          # → dist/<id>-<version>.zip
+gh release create <id>-v<version> dist/<id>-<version>.zip --title "<id> v<version>"
+```
+
+`pack.mjs` needs only Node and the system `zip`; it checks that the manifest `id` matches the directory name, the `version` is semver, and `entry` exists. Repo-maintenance files (`fetch-deps.sh`, `build.sh`) are left out of the zip.
