@@ -1,0 +1,12 @@
+{
+  "id": "glb",
+  "name": "GLB Viewer",
+  "version": "1.0.0",
+  "description": "Preview .glb 3D models with <model-viewer> (offline bundle).",
+  "extensions": [".glb"],
+  "entry": "index.html",
+  "priority": "default",
+  "capabilities": [],
+  "homepage": "https://github.com/turmind/halo-hub/tree/main/extensions/glb",
+  "license": "MIT"
+}

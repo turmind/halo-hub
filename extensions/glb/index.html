@@ -1,0 +1,29 @@
+<!doctype html><meta charset="utf-8">
+<style>html,body,model-viewer{margin:0;width:100%;height:100%;background:transparent}</style>
+<script type="module">
+  import { ModelViewerElement } from './model-viewer.min.js';
+  // Offline: point the three decoder locations at the bundled copies (model-viewer defaults to gstatic / unpkg).
+  ModelViewerElement.dracoDecoderLocation = './decoders/draco/';
+  ModelViewerElement.ktx2TranscoderLocation = './decoders/basis/';
+  ModelViewerElement.meshoptDecoderLocation = './decoders/meshopt_decoder.js';
+  const post = (m) => parent.postMessage({ haloExt: 1, ...m }, '*');
+  const mv = document.querySelector('model-viewer');
+  let url = null;
+  addEventListener('message', (e) => {
+    if (e.source !== parent || e.data?.haloExt !== 1) return;
+    const m = e.data;
+    if (m.type === 'load') {
+      if (url) URL.revokeObjectURL(url);
+      url = URL.createObjectURL(new Blob([m.buffer], { type: 'model/gltf-binary' }));
+      mv.src = url;
+    } else if (m.type === 'theme') { document.body.dataset.theme = m.theme; }
+  });
+  mv.addEventListener('error', (e) => {
+    // model-viewer 4.x sometimes fires a recoverable 'webglcontextlost' at startup, then restores and loads fine —
+    // that is not a file error, so don't surface it to the host.
+    if (e.detail?.type === 'webglcontextlost') return;
+    post({ type: 'error', message: e.detail?.sourceError?.message ?? 'Failed to load model' });
+  });
+  post({ type: 'ready', protocol: 1 });
+</script>
+<model-viewer camera-controls auto-rotate interaction-prompt="none" shadow-intensity="1" exposure="1" touch-action="pan-y"></model-viewer>
