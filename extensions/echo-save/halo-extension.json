@@ -1,0 +1,12 @@
+{
+  "id": "echo-save",
+  "name": "Echo Save (sample)",
+  "version": "1.0.0",
+  "description": "Minimal sample of the save capability: edits a .echo file as text.",
+  "extensions": [".echo"],
+  "entry": "index.html",
+  "priority": "option",
+  "capabilities": ["save"],
+  "homepage": "https://github.com/turmind/halo-hub/tree/main/extensions/echo-save",
+  "license": "MIT"
+}
