@@ -1,3 +1,5 @@
 dist/
 node_modules/
 .DS_Store
+# Halo workspace state (sessions, sqlite, runtime.lock) — present when this repo is opened as a workspace
+.halo/
