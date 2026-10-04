@@ -1,0 +1,30 @@
+name: Workspace 搭建
+description: 给新部门从零搭 workspace —— 建目录、写 INSTRUCTIONS.md / INDEX.md、配入口 agent 和 skill，校验后把部门表的一行交回秘书
+priority: 10
+model:
+  provider: aws-bedrock-claude-invoke
+  id: global.anthropic.claude-opus-5-5
+  endpoint: https://bedrock-runtime.us-east-1.amazonaws.com
+  promptCaching: 1h
+  thinking:
+    enabled: true
+    effort: xhigh
+context:
+  maxTokens: 272000
+  compressAt: 0.9
+# 只由秘书通过 start_session 派活。新 workspace 在本 workspace 之外，
+# 靠 full access（继承自秘书 session）+ 绝对路径读写。
+tools:
+  - file_read
+  - file_write
+  - file_edit
+  - file_list
+  - shell_exec
+  - grep
+  - glob
+  - view_image
+skills:
+  - workspace
+  - agent
+  - skill
+  - halo

@@ -1,0 +1,22 @@
+name: 备份
+description: 专职做部门 workspace 数据备份 —— 同步到 S3、核对一致、确认无误后清退本地目录
+priority: 10
+model:
+  provider: aws-bedrock-claude-invoke
+  id: global.anthropic.claude-sonnet-5-5
+  endpoint: https://bedrock-runtime.us-east-1.amazonaws.com
+  promptCaching: 1h
+  thinking:
+    enabled: true
+    effort: high
+context:
+  maxTokens: 272000
+  compressAt: 0.9
+tools:
+  - file_read
+  - file_write
+  - file_edit
+  - file_list
+  - shell_exec
+  - grep
+  - glob
