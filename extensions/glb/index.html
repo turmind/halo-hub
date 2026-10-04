@@ -8,15 +8,50 @@
   ModelViewerElement.meshoptDecoderLocation = './decoders/meshopt_decoder.js';
   const post = (m) => parent.postMessage({ haloExt: 1, ...m }, '*');
   const mv = document.querySelector('model-viewer');
+  let ext = 'glb';
   let url = null;
+  let seq = 0; // drops the result of a superseded (slower) load
+  const show = (buffer, type) => {
+    if (url) URL.revokeObjectURL(url);
+    url = URL.createObjectURL(new Blob([buffer], { type }));
+    mv.src = url;
+  };
+  // A .gltf is just JSON; its buffers / textures may be sibling files, but the host hands us this one file's bytes only.
+  const externalRefs = (gltf) => [...(gltf.buffers ?? []), ...(gltf.images ?? [])]
+    .map((r) => r.uri).filter((u) => typeof u === 'string' && !u.startsWith('data:'));
+  let convert = null; // convert.min.js (.obj / .stl → GLB) is a second three.js build: load it only when needed
+  async function load(buffer) {
+    const my = ++seq;
+    if (ext === 'gltf') {
+      let gltf;
+      try { gltf = JSON.parse(new TextDecoder().decode(buffer)); } catch { return post({ type: 'error', message: 'Not a valid .gltf (JSON) file' }); }
+      const refs = externalRefs(gltf);
+      if (refs.length) {
+        const shown = refs.slice(0, 3).join(', ') + (refs.length > 3 ? ` +${refs.length - 3} more` : '');
+        return post({ type: 'error', message: `This .gltf references external files (${shown}) — export as .glb or embed the resources` });
+      }
+      return show(buffer, 'model/gltf+json');
+    }
+    if (ext === 'obj' || ext === 'stl') {
+      try {
+        // Both three.js builds are r183; the second one only trips its "multiple instances" console warning.
+        delete window.__THREE__;
+        convert ??= await import('./convert.min.js');
+        const glb = await convert.toGlb(ext, buffer);
+        if (my === seq) show(glb, 'model/gltf-binary');
+      } catch (err) {
+        if (my === seq) post({ type: 'error', message: err?.message ?? `Failed to read .${ext} file` });
+      }
+      return;
+    }
+    show(buffer, 'model/gltf-binary');
+  }
   addEventListener('message', (e) => {
     if (e.source !== parent || e.data?.haloExt !== 1) return;
     const m = e.data;
-    if (m.type === 'load') {
-      if (url) URL.revokeObjectURL(url);
-      url = URL.createObjectURL(new Blob([m.buffer], { type: 'model/gltf-binary' }));
-      mv.src = url;
-    } else if (m.type === 'theme') { document.body.dataset.theme = m.theme; }
+    if (m.type === 'init') ext = m.file?.ext ?? ext;
+    else if (m.type === 'load') load(m.buffer);
+    else if (m.type === 'theme') { document.body.dataset.theme = m.theme; }
   });
   mv.addEventListener('error', (e) => {
     // model-viewer 4.x sometimes fires a recoverable 'webglcontextlost' at startup, then restores and loads fine —

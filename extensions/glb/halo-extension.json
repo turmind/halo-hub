@@ -1,9 +1,9 @@
 {
   "id": "glb",
-  "name": "GLB Viewer",
-  "version": "1.0.0",
-  "description": "Preview .glb 3D models with <model-viewer> (offline bundle).",
-  "extensions": [".glb"],
+  "name": "3D Model Viewer",
+  "version": "1.1.0",
+  "description": "Preview .glb / .gltf / .obj / .stl 3D models with <model-viewer> (offline bundle).",
+  "extensions": [".glb", ".gltf", ".obj", ".stl"],
   "entry": "index.html",
   "priority": "default",
   "capabilities": [],
