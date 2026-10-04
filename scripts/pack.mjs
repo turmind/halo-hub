@@ -12,6 +12,7 @@ if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(m.version)) { console.error(`bad v
 if (!existsSync(`${dir}/${m.entry}`)) { console.error(`entry "${m.entry}" not found`); process.exit(1); }
 mkdirSync('dist', { recursive: true });
 const out = resolve(`dist/${m.id}-${m.version}.zip`);
-// zip contents at the archive root (no wrapper dir) — matches what the installer expects; -X drops extra attrs, -r recursive
-execFileSync('zip', ['-r', '-X', '-q', out, '.', '-x', 'fetch-deps.sh', 'build.sh', 'node_modules/*', '.DS_Store'], { cwd: dir, stdio: 'inherit' });
+// zip contents at the archive root (no wrapper dir) — matches what the installer expects; -X drops extra attrs, -r recursive.
+// Build inputs (src/, package*.json, build.sh, fetch-deps.sh, node_modules/) stay out of the zip.
+execFileSync('zip', ['-r', '-X', '-q', out, '.', '-x', 'fetch-deps.sh', 'build.sh', 'node_modules/*', 'src/*', 'package.json', 'package-lock.json', '.DS_Store'], { cwd: dir, stdio: 'inherit' });
 console.log(out);
