@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Excalidraw, MainMenu, getCommonBounds, hashElementsVersion, languages, restore, serializeAsJSON } from '@excalidraw/excalidraw'
+import { CaptureUpdateAction, Excalidraw, MainMenu, getCommonBounds, hashElementsVersion, languages, restore, serializeAsJSON } from '@excalidraw/excalidraw'
 
 // Halo Canvas extension protocol v1 — see the Halo docs (design/canvas-extensions.md).
 const post = (m, transfer) => parent.postMessage({ haloExt: 1, ...m }, '*', transfer)
@@ -21,8 +21,8 @@ const signature = (elements, appState, files) =>
 
 const parseBoard = (buffer) => {
   const text = new TextDecoder().decode(buffer)
-  if (!text.trim()) return { elements: [], appState: {}, files: {} }
-  const data = JSON.parse(text)
+  // An empty file is a blank board; restore() fills in the default canvas settings either way.
+  const data = text.trim() ? JSON.parse(text) : { elements: [] }
   if (!data || typeof data !== 'object' || !Array.isArray(data.elements)) throw new Error('Not an Excalidraw scene (no "elements" array)')
   // Same options as Excalidraw's own file loader. (refreshDimensions would re-measure text before the
   // board's fonts are loaded and clip it, so it stays off.)
@@ -30,10 +30,9 @@ const parseBoard = (buffer) => {
 }
 
 function App() {
-  const [doc, setDoc] = useState(null) // { id, initialData } — a new id remounts Excalidraw (fresh undo history)
+  const [doc, setDoc] = useState(null) // { initialData } — set by the first load only; later loads update the scene in place
   const [theme, setTheme] = useState('light')
   const apiRef = useRef(null)
-  const docIdRef = useRef(0)
   // baseline: signature of what is on disk; current: latest seen; reported: dirty state the host knows about.
   const sync = useRef({ baseline: null, current: null, reported: false, awaitingBaseline: false })
 
@@ -45,8 +44,7 @@ function App() {
     post({ type: 'dirty', dirty })
   }
 
-  const onChange = (id, elements, appState, files) => {
-    if (id !== docIdRef.current) return // late event from a replaced instance
+  const onChange = (elements, appState, files) => {
     const s = sync.current
     s.current = signature(elements, appState, files)
     // The first change after a load is the scene as Excalidraw normalised it (e.g. missing fractional
@@ -90,11 +88,27 @@ function App() {
         let board
         try { board = parseBoard(m.buffer) } catch (err) { post({ type: 'error', message: `Cannot open as an Excalidraw board: ${err.message}` }); return }
         const s = sync.current
-        s.baseline = s.current = null
         s.reported = false // the host clears its dirty flag on every load
-        s.awaitingBaseline = true
-        docIdRef.current += 1
-        setDoc({ id: docIdRef.current, initialData: board })
+        const api = apiRef.current
+        if (!api) {
+          // First load: mount with it; the first onChange sets the baseline and frames the view.
+          s.baseline = s.current = null
+          s.awaitingBaseline = true
+          setDoc({ initialData: board })
+          return
+        }
+        // Later loads (file changed on disk, "discard and reload"): update the scene in place. Remounting
+        // flashed the whole editor and reset zoom / scroll. Only what the file stores is applied — the
+        // view is kept — and the change stays out of the undo history.
+        const { viewBackgroundColor, gridModeEnabled, gridSize, gridStep } = board.appState
+        api.addFiles(Object.values(board.files))
+        api.updateScene({ elements: board.elements, appState: { viewBackgroundColor, gridModeEnabled, gridSize, gridStep }, captureUpdate: CaptureUpdateAction.NEVER })
+        // Undo steps recorded against the old file would replay onto the new one; a remount used to drop them.
+        api.history.clear()
+        // New baseline right away, or the next onChange reads the external change as an edit. Elements /
+        // files are read back (updateScene normalises indices synchronously); the canvas settings come
+        // from the board, since React may not have applied updateScene's setState yet.
+        s.baseline = s.current = signature(api.getSceneElements(), { viewBackgroundColor, gridModeEnabled }, api.getFiles())
       } else if (m.type === 'save-request') void save()
       else if (m.type === 'saved') {
         // The host now considers the document clean; edits made while the save was in flight make it dirty again.
@@ -129,10 +143,9 @@ function App() {
   if (!doc) return null
   return (
     <Excalidraw
-      key={doc.id}
       initialData={doc.initialData}
       excalidrawAPI={(api) => { apiRef.current = api }}
-      onChange={(elements, appState, files) => onChange(doc.id, elements, appState, files)}
+      onChange={onChange}
       theme={theme}
       langCode={langCode}
       autoFocus

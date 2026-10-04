@@ -1,7 +1,7 @@
 {
   "name": "halo-ext-excalidraw",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Build inputs for the excalidraw Canvas extension (run ./build.sh)",
   "dependencies": {

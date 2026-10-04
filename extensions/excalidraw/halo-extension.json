@@ -1,7 +1,7 @@
 {
   "id": "excalidraw",
   "name": "Excalidraw",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Edit .excalidraw whiteboards with the official Excalidraw editor (offline bundle, saves back to the file).",
   "extensions": [".excalidraw"],
   "entry": "index.html",
