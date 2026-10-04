@@ -9,7 +9,9 @@ Halo Canvas preview extension: opens `.drawio` / `.dio` files in the **full draw
 - If the file changes on disk while you have no unsaved edits (an agent rewrote it) the open diagram is replaced; with unsaved edits Halo keeps yours and reports a conflict on the next save.
 - Theme: the editor starts in Halo's current light/dark theme and follows it when the admin theme is switched.
 
-Limits of the offline / sandboxed setup: no Google Drive / Dropbox / OneDrive / GitHub pickers, no server-side export (PDF goes through the print dialog), no *Insert ▸ Template* (draw.io hides the gallery when offline, so the templates are not shipped), no real-time collaboration. The iframe sandbox has no popups or downloads, so *File ▸ Export as* (PNG / SVG / PDF / XML) opens its dialog but cannot save a file, and links in diagrams do not open. Shape search, all shape libraries, MathJax (`$$…$$`), Mermaid / PlantUML / CSV import and the layout engines work locally.
+Limits of the offline / sandboxed setup: no Google Drive / Dropbox / OneDrive / GitHub pickers, no server-side export (PDF goes through the print dialog), no *Insert ▸ Template* (draw.io hides the gallery when offline, so the templates are not shipped), no real-time collaboration. The iframe sandbox has no popups or downloads, so *File ▸ Export as* (PNG / SVG / PDF / XML) opens its dialog but cannot save a file, and links in diagrams do not open. Shape search, all shape libraries, MathJax (`$$…$$`), *Insert ▸ Advanced ▸ Mermaid* and the layout engines work locally.
+
+Opening, editing and saving make **no network requests**. The only exception is content that itself points at the internet: a diagram with `fontSource=https://fonts.googleapis.com/…` text (also Mermaid's default "redux" theme, which uses the *Recursive* web font) or image cells with `http(s)` URLs make the browser fetch them like any web page would; offline they fall back silently.
 
 ## Install
 
