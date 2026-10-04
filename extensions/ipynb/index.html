@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<!-- Notebooks are untrusted input and this frame shares the admin's origin (sandbox allow-same-origin), so besides
+     DOMPurify the page carries its own CSP: no inline scripts / handlers, no network (remote images are blocked and shown
+     as placeholders), no frames or forms. Inline styles stay allowed for pandas-style HTML outputs. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src data: blob:; font-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Jupyter Notebook</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
+<link rel="stylesheet" href="style.css">
+<script src="vendor/purify.min.js"></script>
+<script src="vendor/marked.min.js"></script>
+<script src="vendor/highlight.min.js"></script>
+<script src="vendor/hljs-julia.min.js"></script>
+<script src="vendor/katex/katex.min.js"></script>
+<div id="root"></div>
+<script type="module" src="app.js"></script>

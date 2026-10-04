@@ -1,0 +1,140 @@
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0a0a0a; --fg: #e6e6e6; --muted: #8b8b93; --border: #2b2b30; --border-strong: #55555c;
+  --code-bg: #141416; --code-border: #2b2b30; --row-alt: rgba(255,255,255,.04);
+  --link: #6cb6ff; --accent: #6cb6ff; --prompt-in: #7ea6ff; --prompt-out: #ff9e64;
+  --err-bg: rgba(248,81,73,.09); --stderr-bg: rgba(248,81,73,.1); --note-bg: rgba(255,255,255,.05);
+  --btn-bg: #1a1a1d; --btn-hover: #26262a;
+  --h-comment: #8b949e; --h-keyword: #ff7b72; --h-string: #a5d6ff; --h-number: #79c0ff; --h-title: #d2a8ff;
+  --h-type: #ffa657; --h-attr: #79c0ff; --h-meta: #a5d6ff; --h-add: #7ee787; --h-del: #ffa198;
+  --a0: #4b4b52; --a1: #ff6b6b; --a2: #5fd17a; --a3: #e0c060; --a4: #6aa8ff; --a5: #d08cf0; --a6: #4fd1c5; --a7: #d4d4d4;
+  --a8: #7d7d85; --a9: #ff8a8a; --a10: #7ee89a; --a11: #f3d77a; --a12: #8dc0ff; --a13: #e0a8ff; --a14: #7ae8dc; --a15: #ffffff;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --border: #d8dee4; --border-strong: #8c959f;
+  --code-bg: #f6f8fa; --code-border: #d0d7de; --row-alt: rgba(0,0,0,.04);
+  --link: #0969da; --accent: #0969da; --prompt-in: #0550ae; --prompt-out: #bc4c00;
+  --err-bg: rgba(255,0,0,.06); --stderr-bg: rgba(255,0,0,.07); --note-bg: rgba(0,0,0,.05);
+  --btn-bg: #f3f4f6; --btn-hover: #e8eaed;
+  --h-comment: #6e7781; --h-keyword: #cf222e; --h-string: #0a3069; --h-number: #0550ae; --h-title: #8250df;
+  --h-type: #953800; --h-attr: #0550ae; --h-meta: #0a3069; --h-add: #116329; --h-del: #82071e;
+  --a0: #24292f; --a1: #c62828; --a2: #1a7f37; --a3: #9a6700; --a4: #0550ae; --a5: #8250df; --a6: #1b7c83; --a7: #6e7781;
+  --a8: #57606a; --a9: #e5484d; --a10: #2da44e; --a11: #bf8700; --a12: #218bff; --a13: #a475f9; --a14: #3192aa; --a15: #8c959f;
+}
+
+* { box-sizing: border-box; }
+/* Scroll position is compensated by hand when lazily rendered cells above the viewport change height (app.js renderNow). */
+html { background: var(--bg); overflow-anchor: none; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+.hljs, pre, code, .prompt { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+
+header.bar { position: sticky; top: 0; z-index: 5; display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; padding: 7px 16px; background: var(--bg); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+header.bar .kernel { color: var(--fg); font-weight: 600; }
+main.nb { max-width: 1180px; margin: 0 auto; padding: 14px 16px 60px; }
+.empty { color: var(--muted); padding: 24px 0; text-align: center; }
+.fail { max-width: 640px; margin: 15vh auto 0; padding: 0 20px; text-align: center; }
+.fail p { color: var(--muted); overflow-wrap: anywhere; }
+
+/* ---- rows: prompt column + body ---- */
+.cell { margin: 0 0 10px; }
+.row { display: flex; gap: 10px; align-items: flex-start; }
+.prompt { flex: 0 0 74px; padding-top: 7px; text-align: right; font-size: 12px; line-height: 1.5; color: var(--muted); user-select: none; white-space: nowrap; }
+.prompt.in { color: var(--prompt-in); }
+.prompt.out { color: var(--prompt-out); }
+.body { flex: 1 1 auto; min-width: 0; }
+.outrow { margin-top: 2px; }
+
+/* ---- code ---- */
+pre { margin: 0; }
+pre.src { padding: 7px 10px; background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; font-size: 13px; line-height: 1.5; tab-size: 4; }
+pre.src code { background: none; padding: 0; white-space: pre; }
+pre.raw { padding: 7px 10px; border: 1px dashed var(--border-strong); border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+
+/* ---- text outputs ---- */
+.txtbox { position: relative; }
+pre.txt { padding: 4px 10px; font-size: 13px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+pre.txt.stderr { background: var(--stderr-bg); }
+pre.txt.err { background: var(--err-bg); }
+pre.txt.plain { white-space: pre; overflow-x: auto; overflow-wrap: normal; }
+pre.txt.json { white-space: pre; overflow-x: auto; }
+.more { display: block; margin: 3px 0 2px 10px; padding: 2px 10px; font: 12px system-ui, sans-serif; color: var(--link); background: var(--btn-bg); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+.more:hover { background: var(--btn-hover); }
+
+/* ---- rich outputs ---- */
+.out-img { display: block; max-width: 100%; height: auto; margin: 2px 10px; }
+.out-img.bg-light { background: #fff; }
+.out-img.bg-dark { background: #111; }
+.out-html, .out-md, .out-latex { margin: 2px 10px; }
+.out-latex { overflow-x: auto; }
+.note { margin: 2px 10px; padding: 3px 10px; display: inline-block; max-width: calc(100% - 20px); background: var(--note-bg); border-radius: 4px; color: var(--muted); font-size: 12px; font-family: ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+.note-alt { opacity: .8; }
+.img-blocked { display: inline-block; padding: 1px 6px; border: 1px dashed var(--border-strong); border-radius: 3px; color: var(--muted); font-size: .9em; }
+
+/* ---- markdown ---- */
+.md { padding: 2px 10px; overflow-wrap: anywhere; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 { margin: 1.1em 0 .45em; line-height: 1.25; font-weight: 600; scroll-margin-top: 44px; }
+.md h1 { font-size: 2em; padding-bottom: .25em; border-bottom: 1px solid var(--border); }
+.md h2 { font-size: 1.5em; padding-bottom: .2em; border-bottom: 1px solid var(--border); }
+.md h3 { font-size: 1.25em; } .md h4 { font-size: 1.05em; } .md h5, .md h6 { font-size: .95em; color: var(--muted); }
+.md p, .md ul, .md ol, .md blockquote, .md pre, .md table, .md details { margin: 0 0 .85em; }
+.md ul, .md ol { padding-left: 1.8em; }
+.md li + li { margin-top: .2em; }
+.md li > ul, .md li > ol { margin: .2em 0 0; }
+.md a { color: var(--link); text-decoration: none; cursor: pointer; }
+.md a:hover { text-decoration: underline; }
+.md blockquote { padding: 0 1em; color: var(--muted); border-left: 3px solid var(--border-strong); }
+.md hr { border: 0; border-top: 1px solid var(--border); margin: 1.2em 0; }
+.md img { max-width: 100%; height: auto; }
+.md code { padding: .12em .35em; background: var(--note-bg); border-radius: 4px; font-size: .9em; }
+.md pre { padding: 8px 12px; background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 4px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+.md pre code { padding: 0; background: none; font-size: inherit; }
+.md table { border-collapse: collapse; display: block; max-width: 100%; overflow-x: auto; }
+.md th, .md td { padding: 5px 12px; border: 1px solid var(--border); }
+.md th { font-weight: 600; background: var(--note-bg); }
+.md tr:nth-child(2n) td { background: var(--row-alt); }
+.md kbd { padding: 1px 5px; font: 11px ui-monospace, Menlo, monospace; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; }
+.md details { padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px; }
+.md summary { cursor: pointer; }
+.md input[type="checkbox"] { margin-right: .4em; }
+.md .katex-display { margin: .8em 0; overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+.out-latex .katex-display { margin: .5em 0; overflow-x: auto; overflow-y: hidden; }
+.katex { font-size: 1.08em; }
+
+/* ---- syntax tokens (palette follows the GitHub light / dark schemes) ---- */
+.hljs { color: inherit; background: none; }
+.hljs-comment, .hljs-quote { color: var(--h-comment); font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag, .hljs-template-tag, .hljs-template-variable, .hljs-type { color: var(--h-keyword); }
+.hljs-string, .hljs-regexp, .hljs-meta .hljs-string { color: var(--h-string); }
+.hljs-number, .hljs-symbol, .hljs-bullet, .hljs-variable.constant_ { color: var(--h-number); }
+.hljs-title, .hljs-title.class_, .hljs-title.function_, .hljs-section { color: var(--h-title); }
+.hljs-built_in, .hljs-class .hljs-title { color: var(--h-type); }
+.hljs-attr, .hljs-attribute, .hljs-selector-class, .hljs-selector-id, .hljs-variable, .hljs-property { color: var(--h-attr); }
+.hljs-meta, .hljs-name, .hljs-tag, .hljs-link { color: var(--h-meta); }
+.hljs-params { color: inherit; }
+.hljs-addition { color: var(--h-add); } .hljs-deletion { color: var(--h-del); }
+.hljs-emphasis { font-style: italic; } .hljs-strong { font-weight: 700; }
+
+/* ---- ANSI ---- */
+.a-b { font-weight: 700; } .a-d { opacity: .7; } .a-i { font-style: italic; } .a-u { text-decoration: underline; }
+.a-inv-bg { color: var(--bg); } .a-inv-fg { background-color: var(--fg); }
+.af0{color:var(--a0)}.ab0{background-color:var(--a0)}
+.af1{color:var(--a1)}.ab1{background-color:var(--a1)}
+.af2{color:var(--a2)}.ab2{background-color:var(--a2)}
+.af3{color:var(--a3)}.ab3{background-color:var(--a3)}
+.af4{color:var(--a4)}.ab4{background-color:var(--a4)}
+.af5{color:var(--a5)}.ab5{background-color:var(--a5)}
+.af6{color:var(--a6)}.ab6{background-color:var(--a6)}
+.af7{color:var(--a7)}.ab7{background-color:var(--a7)}
+.af8{color:var(--a8)}.ab8{background-color:var(--a8)}
+.af9{color:var(--a9)}.ab9{background-color:var(--a9)}
+.af10{color:var(--a10)}.ab10{background-color:var(--a10)}
+.af11{color:var(--a11)}.ab11{background-color:var(--a11)}
+.af12{color:var(--a12)}.ab12{background-color:var(--a12)}
+.af13{color:var(--a13)}.ab13{background-color:var(--a13)}
+.af14{color:var(--a14)}.ab14{background-color:var(--a14)}
+.af15{color:var(--a15)}.ab15{background-color:var(--a15)}
+/* HTML output that paints its own light cell backgrounds (pandas Styler): shrink the white "paper" to the table. */
+.out-html.paper { width: fit-content; max-width: calc(100% - 20px); }

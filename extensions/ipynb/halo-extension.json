@@ -1,0 +1,12 @@
+{
+  "id": "ipynb",
+  "name": "Jupyter Notebook",
+  "version": "1.0.0",
+  "description": "Read-only .ipynb viewer: markdown, highlighted code, rich outputs, math (offline bundle).",
+  "extensions": [".ipynb"],
+  "entry": "index.html",
+  "priority": "default",
+  "capabilities": [],
+  "homepage": "https://github.com/turmind/halo-hub/tree/main/extensions/ipynb",
+  "license": "MIT"
+}
