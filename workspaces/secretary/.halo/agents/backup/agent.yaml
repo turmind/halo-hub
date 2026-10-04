@@ -1,5 +1,5 @@
-name: 备份
-description: 专职做部门 workspace 数据备份 —— 同步到 S3、核对一致、确认无误后清退本地目录
+name: Backup
+description: Dedicated to department workspace data backup — sync to S3, verify consistency, retire the local directory once confirmed
 priority: 10
 model:
   provider: aws-bedrock-claude-invoke

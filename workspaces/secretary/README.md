@@ -1,60 +1,58 @@
-# secretary — 秘书 + 部门 workspace
+# secretary — Secretary + departments workspace
 
-> English: a "front desk + departments" Halo workspace. One secretary agent keeps a routing table of your other workspaces on the same server and dispatches work to them with the `relay_*` tools; reports flow back automatically.
+A "single entry point" workspace: you only talk to the **secretary**. The secretary looks up the **department table** in `.halo/INDEX.md` and uses `relay_send` to dispatch work to the fixed session in the matching department (another workspace on the same server). When the department finishes, its conclusion flows back to the secretary automatically, and the secretary relays it to you. You never have to switch between workspaces yourself.
 
-一个"统一入口"workspace：你只跟**秘书**说话，秘书查 `.halo/INDEX.md` 里的**部门表**，用 `relay_send` 把活派到同一台服务器上对应部门（其他 workspace）的固定 session；部门做完，结论会自动回到秘书这里，由秘书转述。你不用自己在 workspace 之间切换。
-
-## 包含什么
+## What's included
 
 ```
 .halo/
-├── INSTRUCTIONS.md          # 通用原则 + 部门表维护规则 + 托管模式（手动 / 半托管 / 全托管）
-├── INDEX.md                 # 部门表（3 行虚构示例，需要你改）
+├── INSTRUCTIONS.md          # General principles + department-table maintenance rules + management modes (Manual / Semi-managed / Fully managed)
+├── INDEX.md                 # Department table (3 fictional example rows — edit them)
 └── agents/
-    ├── default/             # 秘书：覆盖内置 default，只带 relay_* + 文件/shell 工具，会派活、收报告、追问、打断、叫停
-    ├── ws-builder/          # 子 agent：给新部门从零搭 workspace，并把「部门表新行」交回秘书
-    └── backup/              # 子 agent（可选）：把部门 workspace 同步到 S3、核对一致、清退本地目录
+    ├── default/             # Secretary: overrides the built-in default, carries only relay_* + file/shell tools; dispatches work, receives reports, follows up, interrupts, stops
+    ├── ws-builder/          # Sub-agent: builds a workspace for a new department from scratch and hands the "new department-table row" back to the secretary
+    └── backup/              # Sub-agent (optional): syncs department workspaces to S3, verifies consistency, retires local directories
 ```
 
-## 使用要求
+## Requirements
 
-- **Halo ≥ 1.5.5，server 模式**。`relay_*` 工具只在 server 里有效（CLI / TUI 里调用会失败），且只给**完全访问（full access）**的 session 开放。
-- 各部门 workspace **已经存在于同一台服务器**上（含 `.halo/` 目录）；没有的可以让秘书交给 `ws-builder` 搭。
-- 模型：`agents/*/agent.yaml` 里用的是 `aws-bedrock-claude-invoke` + Claude Sonnet / Opus 5.5。换成别的 provider 就改各 `agent.yaml` 的 `model:` 块（`provider` / `id` / `endpoint` 三项必填）。
-- `backup` agent 需要本机装好 `aws` CLI 且凭证能写你的桶；不需要备份功能就按下文「不要备份功能」删掉。
+- **Halo ≥ 1.5.5, server mode**. The `relay_*` tools only work inside the server (calls from CLI / TUI fail), and are only enabled for **full access** sessions.
+- The department workspaces **already exist on the same server** (with a `.halo/` directory); for any that don't, the secretary can hand it to `ws-builder` to build.
+- Model: `agents/*/agent.yaml` uses `aws-bedrock-claude-invoke` + Claude Sonnet / Opus 5.5. To switch to another provider, change the `model:` block in each `agent.yaml` (`provider` / `id` / `endpoint` are all required).
+- The `backup` agent needs the `aws` CLI installed locally, with credentials that can write to your bucket; if you don't need backups, delete it as described in "No backup feature" below.
 
-## 安装（目前手动）
+## Installation (manual for now)
 
-1. 在目标项目根目录（随便一个空目录即可）里放好这份 `.halo/`：
+1. Put this `.halo/` in the root of the target project (any empty directory will do):
    ```sh
    cp -r workspaces/secretary/.halo /path/to/your-secretary-project/
    ```
-2. 让 Halo server 打开这个目录（admin 里添加 / 切换 workspace）。
-3. 之后 `/workspace import` 上线，会替代手动复制这一步。
+2. Have the Halo server open this directory (add / switch workspace in admin).
+3. Later, `/workspace import` will go live and replace this manual copy step.
 
-## 先改这几处
+## Edit these first
 
-| 位置 | 占位符 / 示例 | 怎么改 |
+| Location | Placeholder / example | How to change |
 |------|------|------|
-| `.halo/INDEX.md` 部门表 | `research` / `ops` / `archive` 三行虚构示例 | 换成你自己的部门：`workspace` 填真实绝对路径，`agent` 填该 workspace 里真实存在的 agent id（不确定留空），`session` 用 `secretary-<部门>` 风格，`状态` 写 启用 / 禁用，`托管模式` 写 手动 / 半托管 / 全托管 |
-| `.halo/INSTRUCTIONS.md` 第 2 节 | `/path/to/workspaces` | 你放各部门 workspace 的父目录；新部门默认建在它下面 |
-| `.halo/INSTRUCTIONS.md` 第 2 节、`agents/default/AGENT.md`「备份 / 清退到 S3」、`agents/backup/AGENT.md` | `<your-bucket>`、`<backup-prefix>` | 你的 S3 桶名和备份前缀（三处保持一致） |
-| `agents/ws-builder/AGENT.md` 「输入」一节 | `/path/to/workspaces/<英文短名>` | 和上面的部门 workspace 根目录一致 |
-| 各 `agent.yaml` 的 `model:` | Bedrock / us-east-1 公共端点 | 按你实际可用的 provider 调整 |
+| `.halo/INDEX.md` department table | Three fictional example rows: `research` / `ops` / `archive` | Replace with your own departments: `workspace` = a real absolute path, `agent` = an agent id that actually exists in that workspace (leave blank if unsure), `session` in `secretary-<department>` style, `Status` = Enabled / Disabled, `Management mode` = Manual / Semi-managed / Fully managed |
+| `.halo/INSTRUCTIONS.md` section 2 | `/path/to/workspaces` | The parent directory where you keep the department workspaces; new departments are created under it by default |
+| `.halo/INSTRUCTIONS.md` section 2, "Backup / retire to S3" in `agents/default/AGENT.md`, `agents/backup/AGENT.md` | `<your-bucket>`, `<backup-prefix>` | Your S3 bucket name and backup prefix (keep all three places consistent) |
+| "Input" section of `agents/ws-builder/AGENT.md` | `/path/to/workspaces/<short-name>` | Same as the department workspace root directory above |
+| `model:` in each `agent.yaml` | Bedrock / us-east-1 public endpoint | Adjust to the provider you can actually use |
 
-### 不要备份功能
+### No backup feature
 
-删掉 `.halo/agents/backup/`；把 `agents/default/agent.yaml` 里 `team:` 的 `backup` 去掉；删除 `agents/default/AGENT.md` 的「备份 / 清退到 S3」一节；`INSTRUCTIONS.md` 第 2 节里"部门清退"和"部门 workspace 备份"两条按需删改。
+Delete `.halo/agents/backup/`; remove `backup` from `team:` in `agents/default/agent.yaml`; delete the "Backup / retire to S3" section of `agents/default/AGENT.md`; in section 2 of `INSTRUCTIONS.md`, delete or edit the "Department retirement" and "Department workspace backup" items as needed.
 
-## 它是怎么工作的（速查）
+## How it works (quick reference)
 
-- **派活**：`relay_send(workspace, session_id, agent_id, message)`。每个部门一个固定 session，不存在会自动建；busy 时消息排队。
-- **收报告**：部门做完，`[Relay report · …]` 自动进秘书 session；被截断时用 `relay_read` 拿全文；`[RELAY TARGET ABORTED …]` 表示部门出错中断。
-- **追问 / 打断 / 叫停 / 看进度**：`relay_send`（追问）、`relay_interrupt`（硬打断）、`relay_stop`、`relay_read` / `relay_list`。
-- **新部门**：`start_session(agent_id="ws-builder", …)` 搭建，拿回「部门表新行」后由秘书写进 `INDEX.md`。
-- **文件交付**：部门把文件留在自己目录并在回报里给绝对路径，秘书再用 `MEDIA:<路径>`（`send-file` skill）转发。
-- **未知需求**：表里没有对应部门就问用户，不猜路径、不替部门干活。
+- **Dispatch**: `relay_send(workspace, session_id, agent_id, message)`. One fixed session per department, created automatically if it doesn't exist; when busy, messages are queued.
+- **Receiving reports**: when a department finishes, `[Relay report · …]` lands in the secretary session automatically; if truncated, use `relay_read` for the full text; `[RELAY TARGET ABORTED …]` means the department hit an error and aborted.
+- **Follow-up / interrupt / stop / check progress**: `relay_send` (follow-up), `relay_interrupt` (hard interrupt), `relay_stop`, `relay_read` / `relay_list`.
+- **New department**: build it with `start_session(agent_id="ws-builder", …)`; after getting the "new department-table row" back, the secretary writes it into `INDEX.md`.
+- **File delivery**: the department leaves files in its own directory and gives the absolute path in its report; the secretary then forwards them with `MEDIA:<path>` (`send-file` skill).
+- **Unknown requests**: if the table has no matching department, ask the user; don't guess paths and don't do the department's work.
 
-## 不包含
+## Not included
 
-内置 agent / skill（`executor`、`send-file`、`cron` 等）由接收方的 server 自带，不在包里；`USER.md`、`memory/`、会话与日志同样不含——在你自己的环境里重新积累。
+Built-in agents / skills (`executor`, `send-file`, `cron`, etc.) ship with the recipient's server and are not in this bundle; `USER.md`, `memory/`, sessions and logs are likewise excluded — they accumulate anew in your own environment.

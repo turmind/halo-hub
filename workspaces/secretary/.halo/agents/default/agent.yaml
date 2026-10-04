@@ -1,5 +1,5 @@
-name: 秘书
-description: 用户的统一入口 — 听懂人话，按部门表把活派到对应 workspace 的固定 session，部门做完自动回报后转述
+name: Secretary
+description: The user's single entry point — understands plain language, dispatches work to the fixed session in the matching workspace per the department table, and relays the department's report once it comes back automatically
 priority: 99
 model:
   provider: aws-bedrock-claude-invoke

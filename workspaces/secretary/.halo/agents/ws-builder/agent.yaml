@@ -1,5 +1,5 @@
-name: Workspace 搭建
-description: 给新部门从零搭 workspace —— 建目录、写 INSTRUCTIONS.md / INDEX.md、配入口 agent 和 skill，校验后把部门表的一行交回秘书
+name: Workspace Builder
+description: Builds a workspace from scratch for a new department — creates the directory, writes INSTRUCTIONS.md / INDEX.md, configures the entry agent and skills, and after validation hands a department-table row back to the secretary
 priority: 10
 model:
   provider: aws-bedrock-claude-invoke
@@ -12,8 +12,8 @@ model:
 context:
   maxTokens: 272000
   compressAt: 0.9
-# 只由秘书通过 start_session 派活。新 workspace 在本 workspace 之外，
-# 靠 full access（继承自秘书 session）+ 绝对路径读写。
+# Dispatched only by the secretary via start_session. The new workspace is outside this one,
+# so it is read/written via full access (inherited from the secretary session) + absolute paths.
 tools:
   - file_read
   - file_write
