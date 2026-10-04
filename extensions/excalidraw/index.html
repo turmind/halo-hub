@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Excalidraw</title>
+<link rel="stylesheet" href="app/index.css">
+<style>
+  html, body, #root { margin: 0; height: 100%; overflow: hidden; }
+  /* "Browse libraries" is a link to libraries.excalidraw.com — unreachable offline and blocked by the sandbox. */
+  .library-menu-browse-button { display: none !important; }
+</style>
+<!-- Must run before the bundle: Excalidraw reads these at module load. Fonts are bundled under app/fonts
+     (an absolute URL, otherwise Excalidraw resolves it against the origin and falls back to a CDN). -->
+<script>
+  window.EXCALIDRAW_ASSET_PATH = new URL('./app/', location.href).href;
+  window.EXCALIDRAW_EXPORT_SOURCE = 'https://excalidraw.com';
+</script>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="app/main.js"></script>
+</body>
+</html>

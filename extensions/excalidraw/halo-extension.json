@@ -1,0 +1,12 @@
+{
+  "id": "excalidraw",
+  "name": "Excalidraw",
+  "version": "1.0.0",
+  "description": "Edit .excalidraw whiteboards with the official Excalidraw editor (offline bundle, saves back to the file).",
+  "extensions": [".excalidraw"],
+  "entry": "index.html",
+  "priority": "default",
+  "capabilities": ["save"],
+  "homepage": "https://github.com/turmind/halo-hub/tree/main/extensions/excalidraw",
+  "license": "MIT"
+}
