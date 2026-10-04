@@ -1,0 +1,187 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>draw.io</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font: 14px system-ui, sans-serif; background: #fff; color: #555; }
+  body.dark { background: #121212; color: #aaa; }
+  iframe { display: block; width: 100%; height: 100%; border: 0; }
+  #msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; white-space: pre-wrap; }
+  #msg[hidden] { display: none; }
+  /* visibility, not display: draw.io fits the diagram to its container size on load, which must be laid out */
+  iframe[hidden] { display: block; visibility: hidden; }
+  #msg.err { color: #c62828; }
+  body.dark #msg.err { color: #ef9a9a; }
+</style>
+</head>
+<body>
+<div id="msg">Loading draw.io…</div>
+<script>
+// Halo side of the protocol (postMessage v1) on the outside, draw.io's own embed protocol
+// (JSON strings, `embed=1&proto=json`) on the inside. The editor is the stock draw.io webapp in a
+// nested same-origin iframe (it inherits this frame's sandbox grant).
+(() => {
+  const msgEl = document.getElementById('msg');
+  const post = (m, transfer) => parent.postMessage({ haloExt: 1, ...m }, '*', transfer);
+
+  let frame = null;        // nested draw.io iframe, created on `init` (needs the theme for `dark=`)
+  let dioReady = false;    // draw.io posted {event:'init'}
+  let loaded = false;      // a valid document is open — gates every save (a failed load leaves the editor blank)
+  let pending = null;      // xml received from the host before draw.io was ready
+  let dirty = false;
+  let lastXml = null;      // newest autosave xml of the open document (null = untouched since load)
+  let edits = 0;           // autosave counter — a save is "clean" only if no edit landed after it was taken
+  let sentEdits = -1;      // `edits` at the time of the newest `save` frame
+  let saveTimer = null;
+
+  const toDio = (m) => frame.contentWindow.postMessage(JSON.stringify(m), '*');
+  const setDark = (theme) => document.body.classList.toggle('dark', theme === 'dark');
+  const showMessage = (text, isError) => {
+    msgEl.textContent = text;
+    msgEl.classList.toggle('err', !!isError);
+    msgEl.hidden = false;
+    if (frame) frame.hidden = true;
+  };
+
+  function createEditor(theme) {
+    // offline=1 drops the cloud pickers; pwa=0 keeps draw.io from registering a service worker under
+    // the extension path; keepmodified=1 lets the host (not draw.io) decide when the diagram is saved.
+    const params = new URLSearchParams({
+      embed: '1', proto: 'json', offline: '1', pwa: '0', keepmodified: '1', spin: '1',
+      ui: 'kennedy', dark: theme === 'dark' ? '1' : '0',
+    });
+    frame = document.createElement('iframe');
+    frame.hidden = true;
+    frame.src = `webapp/index.html?${params}`;
+    frame.addEventListener('load', () => {
+      // Runs right after the editor's scripts are loaded but before it builds its UI (that waits on an XHR),
+      // so the patch is in place when draw.io captures Graph.prototype.openLink for its embed hook.
+      const w = frame.contentWindow;
+      // A cell link with linkTarget="_self" makes openLink do `window.location.href = …` inside this
+      // iframe, which would replace the editor (and any unsaved work). Other targets are harmlessly
+      // blocked by the sandbox (no allow-popups / top navigation).
+      const openLink = w.Graph.prototype.openLink;
+      w.Graph.prototype.openLink = function (href, target, allowOpener) {
+        return openLink.call(this, href, target === '_self' ? '_blank' : target, allowOpener);
+      };
+      // Same for plain <a href> in the editor chrome: never navigate the iframe.
+      w.document.addEventListener('click', (e) => {
+        const a = e.target.closest && e.target.closest('a[href]');
+        if (a && !/^(#|javascript:)/i.test(a.getAttribute('href'))) e.preventDefault();
+      }, true);
+    });
+    document.body.appendChild(frame);
+  }
+
+  // Returns an error string, or null when `xml` is something draw.io can open.
+  function check(xml) {
+    if (!xml.trim()) return null; // empty file → blank diagram
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+    if (doc.querySelector('parsererror')) return 'Not a valid draw.io file: the XML is malformed';
+    const root = doc.documentElement.localName;
+    if (root !== 'mxfile' && root !== 'mxGraphModel') return `Not a draw.io file: root element is <${root}>, expected <mxfile>`;
+    return null;
+  }
+
+  function open(xml) {
+    const err = check(xml);
+    if (err) { loaded = false; post({ type: 'error', message: err }); showMessage(err, true); return; }
+    if (!dioReady) { pending = xml; return; }
+    toDio({ action: 'load', xml, autosave: 1, fit: 1, border: 20, modified: 'unsavedChanges', saveAndExit: '0', noSaveBtn: '1', noExitBtn: '1' });
+  }
+
+  function sendSave(xml) {
+    clearTimeout(saveTimer);
+    sentEdits = edits;
+    // draw.io stamps the serving hostname into <mxfile host="…">; drop it so saves don't leak the admin's
+    // address into files that end up in git (host is optional for draw.io).
+    xml = xml.replace(/^(\s*<mxfile\b[^>]*?)\s+host="[^"]*"/, '$1');
+    const buffer = new TextEncoder().encode(xml).buffer;
+    post({ type: 'save', buffer }, [buffer]);
+  }
+
+  function requestSave() {
+    if (!loaded) return;
+    // draw.io's own `save` action stops any in-place text edit first, then answers with {event:'save'}.
+    toDio({ action: 'invokeAction', actionName: 'save' });
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { if (lastXml != null) sendSave(lastXml); }, 2000);
+  }
+
+  function markDirty() {
+    if (dirty) return;
+    dirty = true;
+    post({ type: 'dirty', dirty: true });
+  }
+
+  function onDrawio(m) {
+    switch (m.event) {
+      case 'init':
+        dioReady = true;
+        if (pending != null) { const xml = pending; pending = null; open(xml); }
+        break;
+      case 'load':
+        if (m.error) break;
+        loaded = true;
+        lastXml = null;
+        dirty = false;
+        msgEl.hidden = true;
+        frame.hidden = false;
+        frame.focus();
+        break;
+      case 'autosave':
+        lastXml = m.xml;
+        edits++;
+        markDirty();
+        break;
+      case 'save': // Ctrl/Cmd+S inside the editor, or our own invokeAction
+        if (loaded) sendSave(m.xml);
+        break;
+    }
+  }
+
+  addEventListener('message', (e) => {
+    if (frame && e.source === frame.contentWindow) {
+      if (typeof e.data !== 'string') return;
+      try { onDrawio(JSON.parse(e.data)); } catch { /* not a draw.io JSON event */ }
+      return;
+    }
+    if (e.source !== parent || e.data?.haloExt !== 1) return;
+    const m = e.data;
+    switch (m.type) {
+      case 'init':
+        setDark(m.theme);
+        createEditor(m.theme);
+        break;
+      case 'load': // first load, or the file changed on disk while we were clean
+        open(new TextDecoder().decode(m.buffer));
+        break;
+      case 'save-request':
+        requestSave();
+        break;
+      case 'saved':
+        if (edits === sentEdits) {
+          dirty = false;
+          toDio({ action: 'status', messageKey: 'allChangesSaved', modified: false });
+        } else {
+          post({ type: 'dirty', dirty: true }); // edited while the save was in flight
+        }
+        break;
+      case 'theme':
+        setDark(m.theme);
+        if (dioReady) toDio({ action: 'invokeAction', actionName: m.theme === 'dark' ? 'darkMode' : 'lightMode' });
+        break;
+    }
+  });
+
+  // Ctrl/Cmd+S while focus is on this page rather than inside the editor (browsers would "save page").
+  addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); requestSave(); }
+  });
+
+  post({ type: 'ready', protocol: 1 });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+halo-hub / extensions/drawio
+Copyright (c) 2026 turmind — MIT (see LICENSE). That covers only index.html, halo-extension.json,
+fetch-deps.sh and the docs in this directory.
+
+The release zip additionally ships webapp/ — the unmodified static web app of draw.io, extracted from
+the official release asset (pruned of files an offline iframe editor never loads, see fetch-deps.sh):
+
+--------------------------------------------------------------------------------
+draw.io (jgraph/drawio) 32.0.2        (webapp/)
+  https://github.com/jgraph/drawio/releases/tag/v32.0.2
+  draw.war sha256 3cb8abec8e9bfc7504760c9cdc9194ecf7e8de178aa2a1d668801c32ecf1a1a7
+  Copyright (c) JGraph Holdings Ltd / draw.io AG
+  Source code: Apache-2.0  https://github.com/jgraph/drawio/blob/v32.0.2/LICENSE
+    (full text: LICENSE-APACHE-2.0 next to this file)
+  Icon sets and stencil libraries (webapp/img, webapp/shapes, webapp/stencils) are shipped with their
+  upstream license files intact (webapp/img/LICENSE, webapp/shapes/LICENSE, webapp/stencils/LICENSE): they
+  may not be used as software assets in Atlassian products or marketplace apps; this does not apply to
+  diagrams you create. Upstream states that icons originating from third parties have been checked to
+  permit this use. (The diagram templates, CC BY 4.0, are not shipped.)
+
+Third-party libraries bundled inside webapp/ (upstream README: "all with licenses compatible with
+Apache 2.0, no GPL or AGPL"). Licenses below are the ones stated in the shipped files; each file keeps
+its own notice and that notice is authoritative:
+  js/sanitizer/purify.min.js        DOMPurify 3.4.16   Apache-2.0 OR MPL-2.0 (Cure53)
+  js/deflate/pako.min.js            pako 2.2.0         MIT AND Zlib
+  js/cryptojs/aes.min.js            CryptoJS 4.2.0     MIT (Jeff Mott, Evan Vosberg)
+  js/jszip/jszip.min.js             JSZip 3.10.1       MIT OR GPL-3.0 (used under MIT)
+  js/jquery/jquery-3.6.0.min.js     jQuery 3.6.0       OpenJS Foundation, MIT
+  math4/es5/drawio-mathjax.min.js   MathJax            Apache-2.0
+  js/vsd/drawio-vsd.min.js          drawio-vsd         Apache-2.0 (JGraph)
+  js/libavoid-js/                   libavoid           LGPL-2.1 (js/libavoid-js/LICENSE)
+  js/rough, js/freehand, js/spin, js/simplepeer, js/dropbox, js/onedrive, js/orgchart,
+  plugins/webcola, js/elk, js/mermaid, js/plantuml, js/gliffy, styles/fonts
+                                    see the headers / README.md next to each file

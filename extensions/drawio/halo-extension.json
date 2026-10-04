@@ -1,0 +1,12 @@
+{
+  "id": "drawio",
+  "name": "draw.io",
+  "version": "1.0.0",
+  "description": "Edit .drawio diagrams with the full draw.io editor (offline bundle).",
+  "extensions": [".drawio", ".dio"],
+  "entry": "index.html",
+  "priority": "default",
+  "capabilities": ["save"],
+  "homepage": "https://github.com/turmind/halo-hub/tree/main/extensions/drawio",
+  "license": "MIT"
+}
