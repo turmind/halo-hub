@@ -1,0 +1,130 @@
+id: mimo-token-plan-china
+runtime: anthropic-messages
+revision: 2026100501
+displayName: Xiaomi MiMo
+displayName_zh: 小米 MiMo
+description: Xiaomi MiMo via its Anthropic-compatible gateway — Token Plan (China / Singapore / Europe clusters) or pay-as-you-go. Supports 1M context window.
+description_zh: 小米 MiMo，Anthropic 兼容网关 — Token Plan（中国 / 新加坡 / 欧洲集群）或按量付费，支持 1M 上下文窗口。
+defaultEndpoint: https://token-plan-cn.xiaomimimo.com/anthropic
+defaultModelId: mimo-v2.6-pro
+# Token Plan keys (tp-/ttp-) only work on the token-plan-* clusters (cn / sgp /
+# ams); pay-as-you-go keys (sk-) only on api.xiaomimimo.com — the key type
+# decides the endpoint. Pay-as-you-go live-probed 2026-09-24 (pro/flash, tool
+# use + caching OK); sgp / ams are from the official docs only.
+endpointPresets:
+  - https://token-plan-cn.xiaomimimo.com/anthropic
+  - https://token-plan-sgp.xiaomimimo.com/anthropic
+  - https://token-plan-ams.xiaomimimo.com/anthropic
+  - https://api.xiaomimimo.com/anthropic
+
+secrets:
+  - key: api_key
+    description: Mimo API Key. Token Plan keys start with tp- (individual) or ttp- (team) and use a token-plan-* endpoint; pay-as-you-go keys start with sk- and need the https://api.xiaomimimo.com/anthropic endpoint. Subscribe at https://platform.xiaomimimo.com?ref=KBV56L (new accounts get 10% off the first order)
+    description_zh: Mimo API Key。Token Plan 的 key 以 tp-（个人）或 ttp-（团队）开头，用 token-plan-* 端点；按量付费的 key 以 sk- 开头，端点须选 https://api.xiaomimimo.com/anthropic。从 https://platform.xiaomimimo.com?ref=KBV56L 订阅（新用户首单 9 折）
+    default: <<MIMO_API_KEY>>
+    secret: true
+
+# MiMo V2.6 (2026-09) replaces V2.5: official model list (mimo.mi.com/llms-full.txt)
+# gives `mimo-v2.6-pro` / `mimo-v2.6-flash` 1M context, 128K (131072) max
+# output, full-modal understanding (image input on both — V2.5 only had it on
+# the non-pro tier). `mimo-v2.6-pro-ultraspeed` is "contact us" only, not
+# listed. `mimo-v2.5-pro` / `mimo-v2.5` are deprecated 2026-10-21 10:00 CST —
+# kept at the tail (tagged) so agents still on them keep their registry
+# capabilities until the cutoff; drop both after that date. Thinking shape unchanged from V2.5 — Anthropic-protocol
+# `thinking.type` enabled/disabled, on by default; the docs say effort levels
+# are not differentiated yet, so the adaptive presets below are a UI knob the
+# gateway accepts, not a real intensity dial. Not live-probed (no valid key at
+# hand on 2026-09-24) — specs are from the official docs only.
+models:
+  - id: mimo-v2.6-pro
+    displayName: MiMo v2.6 Pro
+    maxOutputTokens: 131072
+    contextWindow: 272000
+    capabilities:
+      image: true
+      video: false
+      audio: false
+      promptCaching:
+        default: 1h
+        ttlPresets:
+          - { value: 5m, label: 5min }
+          - { value: 1h, label: 1hour }
+      thinking:
+        mode: adaptive
+        defaultEnabled: true
+        default: high
+        effortPresets:
+          - { value: low, label: Low }
+          - { value: medium, label: Medium }
+          - { value: high, label: High }
+          - { value: max, label: Max }
+
+  - id: mimo-v2.6-flash
+    displayName: MiMo v2.6 Flash
+    maxOutputTokens: 131072
+    contextWindow: 272000
+    capabilities:
+      image: true
+      video: false
+      audio: false
+      promptCaching:
+        default: 1h
+        ttlPresets:
+          - { value: 5m, label: 5min }
+          - { value: 1h, label: 1hour }
+      thinking:
+        mode: adaptive
+        defaultEnabled: true
+        default: high
+        effortPresets:
+          - { value: low, label: Low }
+          - { value: medium, label: Medium }
+          - { value: high, label: High }
+          - { value: max, label: Max }
+
+  # --- deprecated 2026-10-21 10:00 CST (official notice) — remove after cutoff ---
+  - id: mimo-v2.5-pro
+    displayName: MiMo v2.5 Pro (deprecated 2026-10-21)
+    maxOutputTokens: 131072
+    contextWindow: 272000
+    capabilities:
+      image: false
+      video: false
+      audio: false
+      promptCaching:
+        default: 1h
+        ttlPresets:
+          - { value: 5m, label: 5min }
+          - { value: 1h, label: 1hour }
+      thinking:
+        mode: adaptive
+        defaultEnabled: true
+        default: high
+        effortPresets:
+          - { value: low, label: Low }
+          - { value: medium, label: Medium }
+          - { value: high, label: High }
+          - { value: max, label: Max }
+
+  - id: mimo-v2.5
+    displayName: MiMo v2.5 (deprecated 2026-10-21)
+    maxOutputTokens: 131072
+    contextWindow: 272000
+    capabilities:
+      image: true
+      video: false
+      audio: false
+      promptCaching:
+        default: 1h
+        ttlPresets:
+          - { value: 5m, label: 5min }
+          - { value: 1h, label: 1hour }
+      thinking:
+        mode: adaptive
+        defaultEnabled: true
+        default: high
+        effortPresets:
+          - { value: low, label: Low }
+          - { value: medium, label: Medium }
+          - { value: high, label: High }
+          - { value: max, label: Max }

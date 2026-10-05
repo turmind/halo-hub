@@ -1,0 +1,75 @@
+id: deepseek
+runtime: deepseek
+revision: 2026100501
+displayName: DeepSeek
+displayName_zh: DeepSeek
+description: DeepSeek V4 via OpenAI-compatible chat completions API
+description_zh: DeepSeek V4，通过 OpenAI 兼容的 chat completions API 调用
+defaultEndpoint: https://api.deepseek.com
+
+secrets:
+  - key: api_key
+    description: DeepSeek API Key. Get from https://platform.deepseek.com/api_keys
+    description_zh: DeepSeek API Key。从 https://platform.deepseek.com/api_keys 获取
+    default: <<DEEPSEEK_API_KEY>>
+    secret: true
+
+# Capabilities verified via live probes (2026-05-27, re-probed 2026-09-24).
+# reasoning_effort accepts { low, medium, high, max, xhigh } — bogus values
+# 400 with the full valid list in the error. Caching is automatic;
+# cached_tokens shows up from turn 2.
+#
+# Vision is per model: `image_url` blocks are no longer rejected at the
+# deserialize layer on either id, but only `deepseek-flash` (V4.1-Flash,
+# native multimodal since 2026-09-10) actually sees the pixels — a 64×64
+# solid-blue PNG came back "Blue" with 230 prompt tokens. `deepseek-v4-pro`
+# accepts the block yet ignores it (24 prompt tokens, reasoning says
+# "unsupported image" and guesses), so image:false stays on pro.
+models:
+  - id: deepseek-v4-pro
+    displayName: DeepSeek V4 Pro
+    maxOutputTokens: 65536
+    contextWindow: 272000
+    capabilities:
+      image: false
+      video: false
+      audio: false
+      promptCaching:
+        default: 5m
+        ttlPresets:
+          - { value: 5m, label: 5min }
+      thinking:
+        defaultEnabled: true
+        default: medium
+        effortPresets:
+          - { value: low, label: Low }
+          - { value: medium, label: Medium }
+          - { value: high, label: High }
+          - { value: max, label: Max }
+          - { value: xhigh, label: XHigh }
+
+  # DeepSeek retired the versioned flash ids (deepseek-v4-flash,
+  # deepseek-v4-flash-vision-exp) in favour of a rolling `deepseek-flash`
+  # alias; the old names still resolve server-side (currently to V4.1-Flash)
+  # but the docs say to use the alias.
+  - id: deepseek-flash
+    displayName: DeepSeek Flash
+    maxOutputTokens: 65536
+    contextWindow: 272000
+    capabilities:
+      image: true
+      video: false
+      audio: false
+      promptCaching:
+        default: 5m
+        ttlPresets:
+          - { value: 5m, label: 5min }
+      thinking:
+        defaultEnabled: true
+        default: medium
+        effortPresets:
+          - { value: low, label: Low }
+          - { value: medium, label: Medium }
+          - { value: high, label: High }
+          - { value: max, label: Max }
+          - { value: xhigh, label: XHigh }
