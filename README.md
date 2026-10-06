@@ -25,6 +25,7 @@ dist/               Build output — packaged zips, not committed
 | `drawio` | `.drawio` `.dio` | ✓ | Offline draw.io editor (~22 MB zip); release-zip install only |
 | `excalidraw` | `.excalidraw` | ✓ | Offline Excalidraw whiteboard (~16 MB zip); release-zip install only |
 | `ipynb` | `.ipynb` | — | Jupyter notebook viewer (markdown, math, outputs) |
+| `htrans` | `.htrans` (folder) | ✓ | Meeting recorder: mic + system sound, live Amazon Transcribe captions, timed screenshots; needs the server's transcribe proxy + AWS credentials |
 
 **Models** (`models/<id>.yaml`, release tag `models-v<YYYY.MM.DD>`)
 

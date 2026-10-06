@@ -1,0 +1,47 @@
+{
+  "id": "htrans",
+  "name": "Meeting Recorder",
+  "version": "1.0.0",
+  "description": "Record a meeting (mic + system/video sound), live captions via Amazon Transcribe, timed screenshots; saved as a .htrans folder an agent can summarize.",
+  "extensions": [".htrans"],
+  "entry": "index.html",
+  "priority": "default",
+  "bundle": true,
+  "capabilities": ["media", "transcribe"],
+  "platforms": ["web", "desktop-mac", "desktop-win"],
+  "homepage": "https://github.com/turmind/halo-hub/tree/main/extensions/htrans",
+  "license": "MIT",
+  "settings": {
+    "params": [
+      {
+        "key": "region",
+        "description": "AWS region used for Amazon Transcribe streaming (e.g. us-east-1).",
+        "description_zh": "Amazon Transcribe 流式转写使用的 AWS 区域（如 us-east-1）。",
+        "default": "us-east-1"
+      },
+      {
+        "key": "auto_languages",
+        "description": "Candidate languages for \"auto\" language mode, comma-separated Amazon Transcribe codes (e.g. zh-CN,en-US).",
+        "description_zh": "「自动」语言模式下的候选语言，用逗号分隔的 Amazon Transcribe 语言代码（如 zh-CN,en-US）。",
+        "default": "zh-CN,en-US"
+      }
+    ],
+    "secrets": [
+      {
+        "key": "access_key_id",
+        "description": "AWS access key id. Leave empty to use the machine's default AWS credentials.",
+        "description_zh": "AWS Access Key ID。留空则使用本机默认的 AWS 凭证。"
+      },
+      {
+        "key": "secret_access_key",
+        "description": "AWS secret access key. Leave empty to use the machine's default AWS credentials.",
+        "description_zh": "AWS Secret Access Key。留空则使用本机默认的 AWS 凭证。"
+      },
+      {
+        "key": "session_token",
+        "description": "AWS session token (only for temporary credentials). Leave empty to use the machine's default AWS credentials.",
+        "description_zh": "AWS Session Token（仅临时凭证需要）。留空则使用本机默认的 AWS 凭证。"
+      }
+    ]
+  }
+}

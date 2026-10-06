@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Same origin as the admin (sandbox allow-same-origin), so the page carries its own CSP: no inline script / style, no
+     remote anything; connect-src only needs the server's transcribe WebSocket (same host, ws/wss). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src blob:; connect-src 'self' ws: wss:; base-uri 'none'; form-action 'none'">
+<title>Meeting Recorder</title>
+<link rel="stylesheet" href="style.css">
+<div id="app">
+  <header class="bar">
+    <span id="title" class="title"></span>
+    <span id="status" class="pill"></span>
+    <span id="elapsed" class="elapsed">00:00:00</span>
+    <span class="grow"></span>
+    <button id="copyPrompt" class="ghost" type="button"></button>
+  </header>
+
+  <section class="sources">
+    <div class="src">
+      <label data-i="mic"></label>
+      <select id="mic"></select>
+      <button id="micRefresh" class="ghost icon" type="button">⟳</button>
+      <div class="meter"><i id="micMeter"></i></div>
+    </div>
+    <div class="src">
+      <label class="check"><input id="sys" type="checkbox"><span data-i="sys"></span></label>
+      <div class="meter"><i id="sysMeter"></i></div>
+    </div>
+    <div class="src">
+      <label data-i="shots"></label>
+      <select id="shot"></select>
+      <label class="check"><input id="skip" type="checkbox" checked><span data-i="skip"></span></label>
+    </div>
+    <div class="src">
+      <label data-i="lang"></label>
+      <select id="lang"></select>
+    </div>
+  </section>
+
+  <section class="ctl">
+    <button id="start" class="big primary" type="button"></button>
+    <button id="pause" class="big" type="button"></button>
+    <button id="stop" class="big danger" type="button"></button>
+    <span id="txStatus" class="txstatus"></span>
+  </section>
+  <div id="notice" class="notice" hidden></div>
+
+  <main class="logwrap">
+    <div id="log" class="log"></div>
+    <button id="jump" class="jump" type="button" hidden></button>
+  </main>
+</div>
+<div id="lightbox" class="lightbox" hidden><img alt=""></div>
+<div id="toast" class="toast" hidden></div>
+<script type="module" src="app.js"></script>
