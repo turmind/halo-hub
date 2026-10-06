@@ -15,7 +15,8 @@ Halo canvas extension that turns a **`<title>.htrans/` folder** into a small mee
   - the server machine's default credentials (instance role, `~/.aws`, env), or
   - keys entered in **Halo Settings → Extension settings → Meeting Recorder** (`access_key_id`, `secret_access_key`, optional `session_token`; empty = default credentials).
   The identity needs `transcribe:StartStreamTranscription` and `transcribe:StartStreamTranscriptionWebSocket`.
-- Settings: `region` (default `us-east-1`), `auto_languages` (default `zh-CN,en-US`, the candidates for the "Auto" language option).
+- Settings: `region` (default `us-east-1`), `auto_languages` (default `zh-CN,zh-HK,en-US`, the candidates for the "Auto" language option).
+- Language picker: Auto (Mandarin / Cantonese / English, default), Mandarin `zh-CN`, Cantonese `zh-HK`, English `en-US`. Chinese with English words mixed in is transcribed correctly by the fixed Chinese option (English words kept as-is); Auto is for speakers switching whole sentences between the three, detected per stretch of speech (≥ ~1 s). Cantonese has to be an Auto candidate, otherwise it comes out as wrong Mandarin text.
 
 ## Package layout (written only by this extension)
 

@@ -33,12 +33,16 @@ body { background: var(--bg); color: var(--fg); font: 13px/1.5 system-ui, -apple
 .src label.check { display: flex; align-items: center; gap: 5px; color: var(--fg); cursor: pointer; }
 select, button { font: inherit; color: var(--fg); background: var(--btn-bg); border: 1px solid var(--border); border-radius: 5px; padding: 3px 8px; }
 select { max-width: 220px; }
+select#lang { max-width: 320px; }
 select:disabled, button:disabled, input:disabled + span { opacity: .5; }
 button { cursor: pointer; }
 button:hover:not(:disabled) { background: var(--btn-hover); }
 button:disabled { cursor: default; }
 button.ghost { background: transparent; }
 button.icon { padding: 2px 6px; }
+button.help { width: 20px; height: 20px; padding: 0; border-radius: 50%; font-size: 12px; line-height: 18px; color: var(--muted); border-color: var(--border-strong); }
+.langtip { flex: 1 0 100%; margin: 0; padding: 6px 10px 6px 26px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--fg); font-size: 12px; }
+.langtip li + li { margin-top: 2px; }
 .meter { width: 90px; height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; flex: 0 0 auto; }
 .meter i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .08s linear; }
 

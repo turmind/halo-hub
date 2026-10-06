@@ -18,7 +18,15 @@ const T = {
     start: 'Start', resume: 'Resume', pause: 'Pause', stop: 'Stop', copy: 'Copy prompt for agent', copied: 'Copied',
     jump: 'Jump to latest ↓', empty: 'Nothing recorded yet. Pick your sources and press Start.',
     micDefault: 'Default microphone', micNone: 'None (no microphone)', micN: 'Microphone',
-    off: 'Off', secs: 's', auto: 'Auto', speaking: 'speaking…',
+    off: 'Off', secs: 's', speaking: 'speaking…',
+    langs: { auto: 'Auto (Mandarin / Cantonese / English)', 'zh-CN': 'Mandarin', 'zh-HK': 'Cantonese', 'en-US': 'English' },
+    langHelp: 'Which language setting is most accurate?',
+    langTip: [
+      'Mostly Chinese with English words mixed in (“this feature ships next week”): pick Mandarin or Cantonese — English words come through as-is.',
+      'People switch whole sentences between Mandarin, Cantonese and English: pick Auto — each stretch of speech is detected on its own (needs about 1 s of speech).',
+      'English only: pick English.',
+      'Auto only chooses among these three languages.',
+    ],
     sReady: 'Ready', sRec: 'Recording', sPaused: 'Paused', sStopped: 'Stopped', sBusy: 'Working…',
     txOff: '', txConnecting: 'Connecting to Amazon Transcribe…', txLive: 'Live transcription', txRetry: 'Reconnecting', txErr: 'Transcription unavailable',
     retryIn: (s) => `retry in ${s}s`,
@@ -43,7 +51,15 @@ const T = {
     start: '开始', resume: '继续', pause: '暂停', stop: '结束', copy: '复制给 Agent 的提示', copied: '已复制',
     jump: '回到最新 ↓', empty: '还没有记录。选好输入源后点「开始」。',
     micDefault: '默认麦克风', micNone: '不使用麦克风', micN: '麦克风',
-    off: '关闭', secs: '秒', auto: '自动', speaking: '正在说…',
+    off: '关闭', secs: '秒', speaking: '正在说…',
+    langs: { auto: '自动（普通话 / 粤语 / 英语）', 'zh-CN': '普通话', 'zh-HK': '粤语', 'en-US': 'English' },
+    langHelp: '语言怎么选最准？',
+    langTip: [
+      '主要讲中文、夹英文词（如「这个 feature 下周 release」）：直接选「普通话」或「粤语」，英文词会原样保留。',
+      '有人整句在普通话、粤语、英语之间来回切换：选「自动」，每段话单独识别语言（每段至少说 1 秒左右）。',
+      '全程英语：选 English。',
+      '「自动」只在这三种语言里判断。',
+    ],
     sReady: '就绪', sRec: '录制中', sPaused: '已暂停', sStopped: '已结束', sBusy: '处理中…',
     txOff: '', txConnecting: '正在连接 Amazon Transcribe…', txLive: '实时转写中', txRetry: '正在重连', txErr: '转写不可用',
     retryIn: (s) => `${s} 秒后重试`,
@@ -67,7 +83,9 @@ const T = {
 let lang = 'zh';
 const t = (k, ...a) => { const v = T[lang][k]; return typeof v === 'function' ? v(...a) : v; };
 
-const LANGS = [['auto', null], ['zh-CN', '中文'], ['en-US', 'English'], ['zh-HK', '粤语'], ['ja-JP', '日本語'], ['ko-KR', '한국어']];
+// Auto = IdentifyMultipleLanguages over the server's auto_languages (default zh-CN,zh-HK,en-US): Cantonese must be a
+// candidate or it comes out as garbled Mandarin. A fixed Chinese code already keeps mixed-in English words.
+const LANGS = ['auto', 'zh-CN', 'zh-HK', 'en-US'];
 const SHOTS = [0, 20, 30, 60];
 
 // ---- package fs (host `fs` frames) --------------------------------------------------------------------------------------
@@ -614,8 +632,10 @@ function applyLang() {
   sel.replaceChildren(...SHOTS.map((s) => new Option(s ? `${s} ${t('secs')}` : t('off'), String(s))));
   sel.value = cur;
   const ls = $('lang'), lcur = ls.value || 'auto';
-  ls.replaceChildren(...LANGS.map(([v, label]) => new Option(label ?? t('auto'), v)));
-  ls.value = lcur;
+  ls.replaceChildren(...LANGS.map((v) => new Option(t('langs')[v], v)));
+  ls.value = LANGS.includes(lcur) ? lcur : 'auto';
+  $('langHelp').title = $('langHelp').ariaLabel = t('langHelp');
+  $('langTip').replaceChildren(...t('langTip').map((x) => Object.assign(document.createElement('li'), { textContent: x })));
   partialEl.dataset.ph = t('speaking');
   if (emptyEl) emptyEl.textContent = t('empty');
   renderControls();
@@ -625,6 +645,7 @@ $('start').onclick = start;
 $('pause').onclick = () => endRun('pause');
 $('stop').onclick = () => endRun('stop');
 $('micRefresh').onclick = refreshDevices;
+$('langHelp').onclick = () => { const tip = $('langTip'); tip.hidden = !tip.hidden; $('langHelp').ariaExpanded = String(!tip.hidden); };
 $('copyPrompt').onclick = async () => {
   const text = t('prompt', bundlePath);
   try { await navigator.clipboard.writeText(text); }

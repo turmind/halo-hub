@@ -1,7 +1,7 @@
 {
   "id": "htrans",
   "name": "Meeting Recorder",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Record a meeting (mic + system/video sound), live captions via Amazon Transcribe, timed screenshots; saved as a .htrans folder an agent can summarize.",
   "extensions": [".htrans"],
   "entry": "index.html",
@@ -21,9 +21,9 @@
       },
       {
         "key": "auto_languages",
-        "description": "Candidate languages for \"auto\" language mode, comma-separated Amazon Transcribe codes (e.g. zh-CN,en-US).",
-        "description_zh": "「自动」语言模式下的候选语言，用逗号分隔的 Amazon Transcribe 语言代码（如 zh-CN,en-US）。",
-        "default": "zh-CN,en-US"
+        "description": "Candidate languages for the \"Auto\" language option: 2–5 comma-separated Amazon Transcribe codes, one dialect per language (default Mandarin, Cantonese, English).",
+        "description_zh": "「自动」语言选项的候选语言：2–5 个 Amazon Transcribe 语言代码，逗号分隔，同一语言只能选一种方言（默认普通话、粤语、英语）。",
+        "default": "zh-CN,zh-HK,en-US"
       }
     ],
     "secrets": [
