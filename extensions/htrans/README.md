@@ -18,6 +18,13 @@ Halo canvas extension that turns a **`<title>.htrans/` folder** into a small mee
 - Settings: `region` (default `us-east-1`), `auto_languages` (default `zh-CN,zh-HK,en-US`, the candidates for the "Auto" language option).
 - Language picker: Auto (Mandarin / Cantonese / English, default), Mandarin `zh-CN`, Cantonese `zh-HK`, English `en-US`. Chinese with English words mixed in is transcribed correctly by the fixed Chinese option (English words kept as-is); Auto is for speakers switching whole sentences between the three, detected per stretch of speech (≥ ~1 s). Cantonese has to be an Auto candidate, otherwise it comes out as wrong Mandarin text.
 
+## Look, language and capabilities
+
+- **Theme**: follows the host. The `init` / `theme` frames' `themeVars` (Halo's 16 theme tokens: `background`, `foreground`, `card`, `border`, `primary`, `destructive`, `ring`, …) become `--halo-<token>` CSS variables that the whole palette is derived from, so any Halo theme works without changing the extension; `theme` (`light` / `dark`, the host's brightness verdict) only picks the status green / amber.
+- **Language**: follows the host's `init.lang` and live `lang` frames (zh / en) — a running recording and the current selections are kept.
+- **Capabilities**: detected up front, no permission prompt. "System / video sound" is hidden where the engine can't capture a share's audio (`getDisplayMedia` plus the `suppressLocalAudioPlayback` constraint: desktop Chrome / Edge 109+ and the Halo desktop app have it; Firefox, Safari and mobile don't); "Screenshots" is hidden where there's no `getDisplayMedia` or the iframe isn't allowed `display-capture`. A short grey line says why. `window.__htransCaps` / `<html data-cap-sys data-cap-shot>` expose the result.
+- **Older Halo hosts** (no `themeVars`, no `lang` frame): the built-in dark / light palette is used and the language stays as set at open.
+
 ## Package layout (written only by this extension)
 
 ```

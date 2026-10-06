@@ -45,6 +45,11 @@ const T = {
     fsFail: (m) => `Writing to the package failed: ${m}`,
     noRecorder: 'This browser cannot record webm/opus — no audio file will be saved (transcript and screenshots still work).',
     prompt: (p) => `Please read ${p}/transcript.md (the meeting may still be in progress) and summarize what has been said so far`,
+    appName: 'Meeting Recorder', copyShort: 'Copy prompt', refresh: 'Refresh microphone list', elapsed: 'Recorded time',
+    shotAlt: (ts) => `Screenshot at ${ts}`, closeHint: 'Click to close',
+    sysTip: 'After Start a share dialog opens: pick a tab or the entire screen and tick “Share audio”.',
+    capNoSys: 'This browser can’t record system / video sound (needs desktop Chrome / Edge, or the Halo desktop app).',
+    capNone: 'This browser can’t record system / video sound or take screenshots (needs desktop Chrome / Edge, or the Halo desktop app).',
   },
   zh: {
     mic: '麦克风', sys: '系统 / 视频声音', shots: '定时截图', skip: '跳过无变化画面', lang: '语言',
@@ -78,6 +83,11 @@ const T = {
     fsFail: (m) => `写入会议包失败：${m}`,
     noRecorder: '当前浏览器不支持 webm/opus 录音——不会保存音频文件（转写和截图仍可用）。',
     prompt: (p) => `请阅读 ${p}/transcript.md（会议可能仍在进行），概括到目前为止的内容`,
+    appName: '会议录音', copyShort: '复制提示', refresh: '刷新麦克风列表', elapsed: '已录时长',
+    shotAlt: (ts) => `截图 ${ts}`, closeHint: '点击关闭',
+    sysTip: '点开始后会弹出共享窗口：选标签页或整个屏幕，并勾选「分享音频」。',
+    capNoSys: '此浏览器不能录系统 / 视频声音（需 Chrome / Edge 电脑版，或 Halo 桌面客户端）。',
+    capNone: '此浏览器不能录系统 / 视频声音，也不能截屏（需 Chrome / Edge 电脑版，或 Halo 桌面客户端）。',
   },
 };
 let lang = 'zh';
@@ -100,7 +110,7 @@ const fsCall = (op, path, buffer) => new Promise((resolve, reject) => {
 const chains = new Map();
 /** Run `fn` after everything previously queued for `path` (appends to one file stay ordered). */
 const enqueue = (path, fn) => {
-  const p = (chains.get(path) ?? Promise.resolve()).then(fn).catch((e) => { console.warn('[htrans] fs', path, e); setNotice('fs', t('fsFail', e.message)); })
+  const p = (chains.get(path) ?? Promise.resolve()).then(fn).catch((e) => { console.warn('[htrans] fs', path, e); setNotice('fs', () => t('fsFail', e.message)); })
     .finally(() => { if (chains.get(path) === p) chains.delete(path); }); // one-shot paths (shots/*) must not pile up over hours
   chains.set(path, p);
   return p;
@@ -117,7 +127,7 @@ const saveMeeting = () => {
     try {
       do {
         meetingAgain = false;
-        try { await fsCall('write', 'meeting.json', enc(JSON.stringify(meeting, null, 2))); } catch (e) { console.warn('[htrans] meeting.json', e); setNotice('fs', t('fsFail', e.message)); }
+        try { await fsCall('write', 'meeting.json', enc(JSON.stringify(meeting, null, 2))); } catch (e) { console.warn('[htrans] meeting.json', e); setNotice('fs', () => t('fsFail', e.message)); }
       } while (meetingAgain);
     } finally { meetingWrite = null; }
   })();
@@ -127,10 +137,14 @@ const saveMeeting = () => {
 // ---- notices / status ---------------------------------------------------------------------------------------------------
 
 const notices = new Map();
+/** `msg` is a () => string (or null to clear), so a host language switch re-renders it — see applyLang. */
 function setNotice(key, msg, kind = 'warn') {
   if (msg) notices.set(key, { msg, kind }); else notices.delete(key);
+  renderNotices();
+}
+function renderNotices() {
   const box = $('notice');
-  box.replaceChildren(...[...notices.values()].map((n) => el('div', null, n.msg)));
+  box.replaceChildren(...[...notices.values()].map((n) => el('div', null, n.msg())));
   box.className = 'notice' + ([...notices.values()].some((n) => n.kind === 'err') ? ' err' : '');
   box.hidden = notices.size === 0;
 }
@@ -177,9 +191,9 @@ function renderTicker(force) {
   let txt = '', cls = 'txstatus';
   const wait = tx.retryAt > now ? Math.ceil((tx.retryAt - now) / 1000) : 0;
   if (rec) {
-    if (tx.state === 'connecting') txt = t('txConnecting');
+    if (tx.state === 'connecting') { txt = t('txConnecting'); cls += ' wait'; }
     else if (tx.state === 'live') { txt = t('txLive'); cls += ' live'; }
-    else if (tx.state === 'reconnecting') txt = `${t('txRetry')}… ${wait ? t('retryIn', wait) : ''}`;
+    else if (tx.state === 'reconnecting') { txt = `${t('txRetry')}… ${wait ? t('retryIn', wait) : ''}`; cls += ' wait'; }
     else if (tx.state === 'error') { txt = `${t('txErr')} — ${t('retryIn', wait)}`; cls += ' bad'; }
   }
   const s = $('txStatus');
@@ -244,8 +258,9 @@ function addEntry(e) {
   if (e.shot) {
     const img = el('img');
     img.dataset.shot = e.shot;
-    img.alt = e.shot;
-    img.onclick = () => { if (img.src) { $('lightbox').querySelector('img').src = img.src; $('lightbox').hidden = false; } };
+    img.dataset.ts = fmt(e.t);
+    img.alt = t('shotAlt', img.dataset.ts);
+    img.onclick = () => { if (img.src) { const big = $('lightbox').querySelector('img'); big.src = img.src; big.alt = img.alt; $('lightbox').hidden = false; } };
     row.append(img);
     io.observe(img);
   } else row.append(el('span', 'tx', e.text));
@@ -283,18 +298,18 @@ Recorded by the Halo "Meeting Recorder" extension. 由 Halo「Meeting Recorder�
 
 async function loadPackage() {
   let raw = null;
-  try { raw = new Uint8Array((await fsCall('read', 'meeting.json')).buffer); } catch (e) { if (e.code !== 'not-found') { setNotice('pkg', t('pkgBad', e.message), 'err'); renderControls(); return; } }
+  try { raw = new Uint8Array((await fsCall('read', 'meeting.json')).buffer); } catch (e) { if (e.code !== 'not-found') { setNotice('pkg', () => t('pkgBad', e.message), 'err'); renderControls(); return; } }
   if (!raw) {
     meeting = { format: 'htrans', version: 1, title, createdAt: new Date().toISOString(), status: 'idle', runs: [], shotIntervalSec: 0, asr: { engine: 'aws-transcribe', language: 'auto' } };
     await Promise.all([saveMeeting(), enqueue('README.md', () => fsCall('write', 'README.md', enc(README)))]);
   } else {
-    try { meeting = JSON.parse(new TextDecoder().decode(raw)); if (!Array.isArray(meeting.runs)) meeting.runs = []; } catch (e) { setNotice('pkg', t('pkgBad', e.message), 'err'); renderControls(); return; }
+    try { meeting = JSON.parse(new TextDecoder().decode(raw)); if (!Array.isArray(meeting.runs)) meeting.runs = []; } catch (e) { setNotice('pkg', () => t('pkgBad', e.message), 'err'); renderControls(); return; }
   }
   let entries = [];
   try {
     const text = new TextDecoder().decode((await fsCall('read', 'transcript.jsonl')).buffer);
     for (const line of text.split('\n')) { if (!line.trim()) continue; try { entries.push(JSON.parse(line)); } catch { /* torn last line after a crash */ } }
-  } catch (e) { if (e.code !== 'not-found') setNotice('pkg', t('pkgBad', e.message), 'err'); }
+  } catch (e) { if (e.code !== 'not-found') setNotice('pkg', () => t('pkgBad', e.message), 'err'); }
   // A previous session died while recording (crash / reload): close its run off the last thing it managed to write.
   if (meeting.status === 'recording') {
     const run = meeting.runs[meeting.runs.length - 1];
@@ -426,9 +441,9 @@ function txOpen() {
     tx.state = 'reconnecting';
     if (code === 'credentials' || code === 'denied' || code === 'bad-request') { delay = 60000; tx.state = 'error'; }
     else if (code === 'limit') { delay = Math.max(delay, 15000); tx.state = 'error'; }
-    if (code === 'credentials' || code === 'denied' || code === 'limit') setNotice('tx', t(code), 'err');
-    else if (code) setNotice('tx', tx.err.message || code, 'err');
-    else if (tx.failures >= 2) setNotice('tx', t('unreachable'), 'err');
+    if (code === 'credentials' || code === 'denied' || code === 'limit') setNotice('tx', () => t(code), 'err');
+    else if (code) { const msg = tx.err.message || code; setNotice('tx', () => msg, 'err'); }
+    else if (tx.failures >= 2) setNotice('tx', () => t('unreachable'), 'err');
     tx.retryAt = Date.now() + delay;
     renderTicker(true);
   };
@@ -475,9 +490,9 @@ function stopTracks(...streams) { for (const s of streams) s?.getTracks().forEac
 async function start() {
   if (phase !== 'idle' && phase !== 'paused' && phase !== 'stopped') return;
   const wantMic = $('mic').value !== 'none';
-  const wantSys = $('sys').checked;
-  const shotSec = Number($('shot').value);
-  if (!wantMic && !wantSys && !shotSec) { setNotice('start', t('noSource')); return; }
+  const wantSys = caps.sys && $('sys').checked;
+  const shotSec = caps.shot ? Number($('shot').value) : 0; // hidden row may still hold a saved meeting.json interval
+  if (!wantMic && !wantSys && !shotSec) { setNotice('start', () => t('noSource')); return; }
   setNotice('start', null); setNotice('fs', null);
   setPhase('starting');
   let display = null, micStream = null, ctx = null;
@@ -485,20 +500,20 @@ async function start() {
     // getDisplayMedia needs the click's user activation, so it goes first (the mic prompt can take longer than it lasts).
     if (wantSys || shotSec) {
       try { display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: wantSys }); }
-      catch { setNotice('start', t('shareCancelled')); setPhase(meeting.runs.length ? 'stopped' : 'idle'); return; }
+      catch { setNotice('start', () => t('shareCancelled')); setPhase(meeting.runs.length ? 'stopped' : 'idle'); return; }
       if (!shotSec) display.getVideoTracks().forEach((tr) => tr.stop()); // only the sound is wanted
     }
     const sysTracks = wantSys && display ? display.getAudioTracks() : [];
-    if (wantSys && !sysTracks.length) setNotice('sys', t('noSysAudio'));
+    if (wantSys && !sysTracks.length) setNotice('sys', () => t('noSysAudio'));
     else setNotice('sys', null);
     if (wantMic) {
       const id = $('mic').value;
       try { micStream = await navigator.mediaDevices.getUserMedia({ audio: { ...(id ? { deviceId: { exact: id } } : {}), echoCancellation: true, noiseSuppression: true } }); }
-      catch (e) { stopTracks(display); setNotice('start', t('micFailed', e.message || e.name)); setPhase(meeting.runs.length ? 'stopped' : 'idle'); return; }
+      catch (e) { stopTracks(display); setNotice('start', () => t('micFailed', e.message || e.name)); setPhase(meeting.runs.length ? 'stopped' : 'idle'); return; }
       refreshDevices(); // labels are available now
     }
     const hasAudio = !!micStream || sysTracks.length > 0;
-    if (!hasAudio && !(shotSec && display?.getVideoTracks().length)) { stopTracks(display); setNotice('start', t('noSource')); setPhase(meeting.runs.length ? 'stopped' : 'idle'); return; }
+    if (!hasAudio && !(shotSec && display?.getVideoTracks().length)) { stopTracks(display); setNotice('start', () => t('noSource')); setPhase(meeting.runs.length ? 'stopped' : 'idle'); return; }
 
     const now = Date.now();
     meeting.startedAt ??= now;
@@ -540,12 +555,12 @@ async function start() {
         mr.ondataavailable = (ev) => { if (ev.data.size) enqueue(audio, async () => fsCall('append', audio, await ev.data.arrayBuffer())); };
         r.recorderStopped = new Promise((res) => { mr.onstop = res; });
         mr.start(5000);
-      } else setNotice('rec', t('noRecorder'));
+      } else setNotice('rec', () => t('noRecorder'));
     }
-    micStream?.getAudioTracks()[0]?.addEventListener('ended', () => setNotice('end-mic', t('micEnded')));
-    display?.getVideoTracks()[0]?.addEventListener('ended', () => { r.nextShotAt = 0; setNotice('end-share', t('shareEnded')); });
+    micStream?.getAudioTracks()[0]?.addEventListener('ended', () => setNotice('end-mic', () => t('micEnded')));
+    display?.getVideoTracks()[0]?.addEventListener('ended', () => { r.nextShotAt = 0; setNotice('end-share', () => t('shareEnded')); });
     r.tickTimer = setInterval(tick, 1000);
-    sysTracks[0]?.addEventListener('ended', () => setNotice('end-share', t('shareEnded')));
+    sysTracks[0]?.addEventListener('ended', () => setNotice('end-share', () => t('shareEnded')));
     Object.assign(tx, { backoff: 1000, failures: 0 });
     if (hasAudio) txOpen();
     post({ type: 'dirty', dirty: true });
@@ -554,7 +569,7 @@ async function start() {
     await saveMeeting();
   } catch (e) {
     console.warn('[htrans] start failed', e);
-    setNotice('start', t('micFailed', e.message || String(e)), 'err');
+    setNotice('start', () => t('micFailed', e.message || String(e)), 'err');
     if (rec) await endRun('stop'); else { stopTracks(display, micStream); ctx?.close(); setPhase(meeting.runs.length ? 'stopped' : 'idle'); }
   }
 }
@@ -623,10 +638,47 @@ requestAnimationFrame(meterLoop);
 
 // ---- wiring --------------------------------------------------------------------------------------------------------------------
 
+// What this engine can really capture, feature-detected once (no permission prompt). getDisplayMedia missing = mobile;
+// the iframe's permissions policy can withhold display-capture (an API-less policy = Firefox / Safari = allowed).
+// suppressLocalAudioPlayback only applies to a share's audio track, so only engines that capture shared audio expose
+// it (Chrome / Edge 109+, Electron; not Firefox / Safari / iOS). Screenshots need capture only (the <video> path).
+const md = navigator.mediaDevices;
+const policy = document.permissionsPolicy ?? document.featurePolicy;
+const canCapture = typeof md?.getDisplayMedia === 'function' && (policy?.allowsFeature?.('display-capture') ?? true);
+const caps = { shot: canCapture, sys: canCapture && md.getSupportedConstraints?.().suppressLocalAudioPlayback === true };
+window.__htransCaps = caps;
+document.documentElement.dataset.capSys = String(caps.sys);
+document.documentElement.dataset.capShot = String(caps.shot);
+// No mediaDevices at all is the insecure-context case: the `noMedia` notice explains it, don't blame the browser here.
+$('srcSys').hidden = !!md && !caps.sys;
+$('srcShot').hidden = !!md && !caps.shot;
+
+// Host theme tokens -> --halo-<token> (style.css derives its palette from them, falling back to built-in values).
+let themeKeys = [];
+function applyTheme(m) {
+  const root = document.documentElement;
+  root.dataset.theme = m.theme;
+  const vars = m.themeVars && typeof m.themeVars === 'object' ? m.themeVars : {};
+  const keys = Object.keys(vars).filter((k) => /^[a-z-]+$/.test(k) && typeof vars[k] === 'string');
+  for (const k of themeKeys) if (!keys.includes(k)) root.style.removeProperty(`--halo-${k}`);
+  for (const k of keys) root.style.setProperty(`--halo-${k}`, vars[k]);
+  themeKeys = keys;
+}
+
 function applyLang() {
   document.documentElement.lang = lang;
   for (const n of document.querySelectorAll('[data-i]')) n.textContent = t(n.dataset.i);
-  $('copyPrompt').textContent = t('copy');
+  if (title) document.title = `${title} · ${t('appName')}`;
+  $('copyPrompt').title = $('copyPrompt').ariaLabel = t('copy');
+  $('micRefresh').title = $('micRefresh').ariaLabel = t('refresh');
+  $('elapsed').title = t('elapsed');
+  $('sys').closest('label').title = t('sysTip');
+  const capKey = !md || caps.sys ? '' : caps.shot ? 'capNoSys' : 'capNone';
+  $('capNote').textContent = capKey ? t(capKey) : '';
+  $('capNote').hidden = !capKey;
+  $('lightbox').title = t('closeHint');
+  for (const img of log.querySelectorAll('img[data-shot]')) img.alt = t('shotAlt', img.dataset.ts);
+  renderNotices();
   $('jump').textContent = t('jump');
   const sel = $('shot'), cur = sel.value || '0';
   sel.replaceChildren(...SHOTS.map((s) => new Option(s ? `${s} ${t('secs')}` : t('off'), String(s))));
@@ -665,16 +717,21 @@ addEventListener('message', (e) => {
     fsPending.delete(m.id);
     if (m.ok) p.resolve(m);
     else p.reject(Object.assign(new Error(m.error), { code: m.code }));
-  } else if (m.type === 'theme') document.documentElement.dataset.theme = m.theme;
-  else if (m.type === 'init') {
-    document.documentElement.dataset.theme = m.theme;
+  } else if (m.type === 'theme') applyTheme(m);
+  else if (m.type === 'lang') {
+    lang = m.lang === 'en' ? 'en' : 'zh';
+    applyLang(); // also renderControls; select values are restored, a running recording is untouched
+    renderTicker(true);
+    if (md) refreshDevices(); // relabel "Default microphone" etc., keeps the selection
+  } else if (m.type === 'init') {
+    applyTheme(m);
     lang = m.lang === 'en' ? 'en' : 'zh';
     bundlePath = m.file.path;
     title = m.file.name.replace(/\.htrans$/i, '');
     $('title').textContent = title;
-    document.title = title;
+    $('title').title = title;
     applyLang();
-    if (!navigator.mediaDevices) { setNotice('media', t('noMedia'), 'err'); }
+    if (!navigator.mediaDevices) { setNotice('media', () => t('noMedia'), 'err'); }
     else { refreshDevices(); navigator.mediaDevices.addEventListener?.('devicechange', refreshDevices); }
     loadPackage();
   }
