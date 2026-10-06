@@ -2,7 +2,7 @@
 
 Halo canvas extension that turns a **`<title>.htrans/` folder** into a small meeting-recorder app. Click the folder in the Halo file tree to open it.
 
-- Inputs: a microphone, optionally the **system / video sound** of a shared screen, window or tab, optionally **timed screenshots** (off / 20 s / 30 s / 60 s) of that share.
+- Inputs: a microphone, optionally the **system / video sound** of a shared screen, window or tab, optionally **timed screenshots** (off / 10 s / 20 s / 30 s / 60 s) of that share.
 - **Live captions** from Amazon Transcribe streaming, reached through Halo's server-side proxy (`/api/transcribe/stream`). Nothing is transcribed in the browser and no model is downloaded.
 - Everything is appended to the folder as it happens, so a crash or a closed tab loses nothing, and a Halo agent can read `transcript.md` **while the meeting is still running**.
 - Playback is never involved: the audio graph is not connected to the speakers.
@@ -16,7 +16,7 @@ Halo canvas extension that turns a **`<title>.htrans/` folder** into a small mee
   - keys entered in **Halo Settings → Extension settings → Meeting Recorder** (`access_key_id`, `secret_access_key`, optional `session_token`; empty = default credentials).
   The identity needs `transcribe:StartStreamTranscription` and `transcribe:StartStreamTranscriptionWebSocket`.
 - Settings: `region` (default `us-east-1`), `auto_languages` (default `zh-CN,zh-HK,en-US`, the candidates for the "Auto" language option).
-- Language picker: Auto (Mandarin / Cantonese / English, default), Mandarin `zh-CN`, Cantonese `zh-HK`, English `en-US`. Chinese with English words mixed in is transcribed correctly by the fixed Chinese option (English words kept as-is); Auto is for speakers switching whole sentences between the three, detected per stretch of speech (≥ ~1 s). Cantonese has to be an Auto candidate, otherwise it comes out as wrong Mandarin text.
+- Language picker: Auto (Mandarin / Cantonese / English, default), Mandarin + English, Cantonese + English, English. The two "+ English" options are multi-language identification over that pair (the proxy gets `lang=zh-CN,en-US` / `zh-HK,en-US`; `meeting.json` keeps storing `zh-CN` / `zh-HK`, so older packages open unchanged) — English words or whole sentences inside Chinese speech come out as English. Auto identifies among all three, per stretch of speech (≥ ~1 s); Cantonese has to be an Auto candidate, otherwise it comes out as wrong Mandarin text. English = `en-US` only. Needs a Halo whose transcribe proxy accepts a comma-separated `lang` list (an older proxy answers `bad-request` for the two "+ English" options).
 
 ## Look, language and capabilities
 
@@ -44,7 +44,7 @@ Offsets are `wall clock − meeting.json.startedAt`. Pause ends the current run;
 
 `getUserMedia` (mic, echo cancellation + noise suppression) and the audio track of `getDisplayMedia` are mixed in one `AudioContext` that is never connected to `destination`. The mix feeds a `MediaRecorder` (opus/webm, 32 kbps, 5 s slices) and an `AudioWorklet` (`pcm-worklet.js`) that downsamples to 16 kHz mono s16le in ~150 ms batches; those go to the proxy WebSocket as binary frames. `partial` results are shown in grey, only `final` ones are written. The WebSocket is re-opened automatically (1 s backoff, capped at 30 s; 60 s after a credentials / permission error) and the recorder and screenshots keep running meanwhile; PCM produced while disconnected is dropped.
 
-Screenshots (`ImageCapture.grabFrame`, or a hidden `<video>` as a fallback) are JPEG q0.8, max 1600 px wide; with "skip unchanged frames" a 32×18 grayscale thumbnail is compared with the last kept frame and near-identical frames are dropped.
+Screenshots (`ImageCapture.grabFrame`, or a hidden `<video>` as a fallback) are JPEG q0.8, max 1600 px wide; with "skip unchanged frames" a 32×18 grayscale thumbnail is compared with the last kept frame and near-identical frames are dropped. A thumbnail is a fixed-ratio placeholder (the screenshot's ratio once known, 16:9 before) with a soft loading shimmer until the image has decoded, and "Screenshot unavailable" if it can't be read — never the browser's broken-image icon; the enlarged view behaves the same.
 
 The timeline (`transcript.md`, `transcript.jsonl`, the on-screen log) is in time order. A sentence is stamped with its start but only arrives once it is final, so a screenshot's line (the image file is written at once) waits until no earlier sentence can still come: the sentence being recognized started after it, ~2 s passed without one, or the stream closed / the run paused or stopped. Packages from 1.0.2 and earlier are shown sorted by time (files are not rewritten).
 

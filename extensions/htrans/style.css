@@ -86,7 +86,14 @@ button.big.danger:hover:not(:disabled) { background: var(--err-bg); }
 .ts, .partial::before { flex: 0 0 auto; min-width: 10ch; color: var(--muted); opacity: .8; font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; user-select: none; }
 .tx { min-width: 0; max-width: 90ch; overflow-wrap: anywhere; white-space: pre-wrap; }
 .line.shot { align-items: flex-start; padding: 6px 0; }
-.line.shot img { display: block; width: 240px; max-width: 100%; min-width: 0; min-height: 40px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); cursor: zoom-in; }
+/* screenshot = a fixed-ratio placeholder box; its <img> is only shown once decoded (data-state="loaded") */
+.thumb { position: relative; flex: 0 1 auto; width: 240px; max-width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); overflow: hidden; }
+.thumb img { display: block; width: 100%; height: 100%; object-fit: contain; visibility: hidden; }
+.thumb[data-state="loaded"] { cursor: zoom-in; }
+.thumb[data-state="loaded"] img { visibility: visible; }
+.thumb[data-state="loading"]::after, .lightbox[data-state="loading"]::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--fg) 7%, transparent) 50%, transparent 70%) 0 0 / 250% 100%; animation: shimmer 1.4s linear infinite; }
+.thumb[data-state="error"]::after { content: attr(data-msg); position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 8px; text-align: center; color: var(--muted); font-size: 12px; border: 1px dashed var(--border-strong); border-radius: 3px; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
 .partial { color: var(--muted); overflow-wrap: anywhere; }
 .partial::before { content: attr(data-ph); width: 10ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .partial:empty { display: none; }
@@ -96,6 +103,9 @@ button.big.danger:hover:not(:disabled) { background: var(--err-bg); }
 
 .lightbox { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; cursor: zoom-out; }
 .lightbox img { max-width: 96vw; max-height: 96vh; background: #fff; }
+.lightbox:not([data-state="loaded"]) img { display: none; }
+.lightbox[data-state="loading"]::after, .lightbox[data-state="error"]::after { position: static; width: min(80vw, 640px); aspect-ratio: 16 / 9; border-radius: 6px; background-color: var(--panel); }
+.lightbox[data-state="error"]::after { content: attr(data-msg); display: flex; align-items: center; justify-content: center; color: var(--muted); }
 .toast { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); padding: 6px 14px; border-radius: 6px; background: var(--fg); color: var(--bg); z-index: 30; }
 .hidden-video { position: fixed; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
 
@@ -109,5 +119,5 @@ button.big.danger:hover:not(:disabled) { background: var(--err-bg); }
   .meter { width: 56px; }
   .ctl { flex-wrap: wrap; }
   .txstatus { margin-left: 0; }
-  .line.shot img { width: 100%; }
+  .thumb { width: 100%; }
 }

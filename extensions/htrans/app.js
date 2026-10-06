@@ -19,13 +19,13 @@ const T = {
     jump: 'Jump to latest ↓', empty: 'Nothing recorded yet. Pick your sources and press Start.',
     micDefault: 'Default microphone', micNone: 'None (no microphone)', micN: 'Microphone',
     off: 'Off', secs: 's', speaking: 'speaking…',
-    langs: { auto: 'Auto (Mandarin / Cantonese / English)', 'zh-CN': 'Mandarin', 'zh-HK': 'Cantonese', 'en-US': 'English' },
+    langs: { auto: 'Auto (Mandarin / Cantonese / English)', 'zh-CN': 'Mandarin + English', 'zh-HK': 'Cantonese + English', 'en-US': 'English' },
     langHelp: 'Which language setting is most accurate?',
     langTip: [
-      'Mostly Chinese with English words mixed in (“this feature ships next week”): pick Mandarin or Cantonese — English words come through as-is.',
-      'People switch whole sentences between Mandarin, Cantonese and English: pick Auto — each stretch of speech is detected on its own (needs about 1 s of speech).',
-      'English only: pick English.',
-      'Auto only chooses among these three languages.',
+      'Mandarin + English: Mandarin speakers, with English words or whole English sentences mixed in.',
+      'Cantonese + English: the same for Cantonese speakers.',
+      'Auto: Mandarin, Cantonese and English all come up in the meeting — each stretch of speech is detected on its own (about 1 s of speech each).',
+      'English: the whole meeting is in English.',
     ],
     sReady: 'Ready', sRec: 'Recording', sPaused: 'Paused', sStopped: 'Stopped', sBusy: 'Working…',
     txOff: '', txConnecting: 'Connecting to Amazon Transcribe…', txLive: 'Live transcription', txRetry: 'Reconnecting', txErr: 'Transcription unavailable',
@@ -46,7 +46,7 @@ const T = {
     noRecorder: 'This browser cannot record webm/opus — no audio file will be saved (transcript and screenshots still work).',
     prompt: (p) => `Please read ${p}/transcript.md (the meeting may still be in progress) and summarize what has been said so far`,
     appName: 'Meeting Recorder', copyShort: 'Copy prompt', refresh: 'Refresh microphone list', elapsed: 'Recorded time',
-    shotAlt: (ts) => `Screenshot at ${ts}`, closeHint: 'Click or press Esc to close',
+    shotAlt: (ts) => `Screenshot at ${ts}`, shotFail: 'Screenshot unavailable', closeHint: 'Click or press Esc to close',
     sysTip: 'After Start a share dialog opens: pick a tab or the entire screen and tick “Share audio”.',
     capNoSys: 'This browser can’t record system / video sound (needs desktop Chrome / Edge, or the Halo desktop app).',
     capNone: 'This browser can’t record system / video sound or take screenshots (needs desktop Chrome / Edge, or the Halo desktop app).',
@@ -57,13 +57,13 @@ const T = {
     jump: '回到最新 ↓', empty: '还没有记录。选好输入源后点「开始」。',
     micDefault: '默认麦克风', micNone: '不使用麦克风', micN: '麦克风',
     off: '关闭', secs: '秒', speaking: '正在说…',
-    langs: { auto: '自动（普通话 / 粤语 / 英语）', 'zh-CN': '普通话', 'zh-HK': '粤语', 'en-US': 'English' },
+    langs: { auto: '自动（普通话 / 粤语 / 英语）', 'zh-CN': '普通话 + 英语', 'zh-HK': '粤语 + 英语', 'en-US': 'English' },
     langHelp: '语言怎么选最准？',
     langTip: [
-      '主要讲中文、夹英文词（如「这个 feature 下周 release」）：直接选「普通话」或「粤语」，英文词会原样保留。',
-      '有人整句在普通话、粤语、英语之间来回切换：选「自动」，每段话单独识别语言（每段至少说 1 秒左右）。',
-      '全程英语：选 English。',
-      '「自动」只在这三种语言里判断。',
+      '普通话 + 英语：讲普通话为主，夹英文词或整句英文都可以。',
+      '粤语 + 英语：讲粤语为主，夹英文词或整句英文都可以。',
+      '自动：会上普通话、粤语、英语都有人讲，每段话单独识别语言（每段至少说 1 秒左右）。',
+      'English：全程英语。',
     ],
     sReady: '就绪', sRec: '录制中', sPaused: '已暂停', sStopped: '已结束', sBusy: '处理中…',
     txOff: '', txConnecting: '正在连接 Amazon Transcribe…', txLive: '实时转写中', txRetry: '正在重连', txErr: '转写不可用',
@@ -84,7 +84,7 @@ const T = {
     noRecorder: '当前浏览器不支持 webm/opus 录音——不会保存音频文件（转写和截图仍可用）。',
     prompt: (p) => `请阅读 ${p}/transcript.md（会议可能仍在进行），概括到目前为止的内容`,
     appName: '会议录音', copyShort: '复制提示', refresh: '刷新麦克风列表', elapsed: '已录时长',
-    shotAlt: (ts) => `截图 ${ts}`, closeHint: '点击或按 Esc 关闭',
+    shotAlt: (ts) => `截图 ${ts}`, shotFail: '截图无法加载', closeHint: '点击或按 Esc 关闭',
     sysTip: '点开始后会弹出共享窗口：选标签页或整个屏幕，并勾选「分享音频」。',
     capNoSys: '此浏览器不能录系统 / 视频声音（需 Chrome / Edge 电脑版，或 Halo 桌面客户端）。',
     capNone: '此浏览器不能录系统 / 视频声音，也不能截屏（需 Chrome / Edge 电脑版，或 Halo 桌面客户端）。',
@@ -93,10 +93,12 @@ const T = {
 let lang = 'zh';
 const t = (k, ...a) => { const v = T[lang][k]; return typeof v === 'function' ? v(...a) : v; };
 
-// Auto = IdentifyMultipleLanguages over the server's auto_languages (default zh-CN,zh-HK,en-US): Cantonese must be a
-// candidate or it comes out as garbled Mandarin. A fixed Chinese code already keeps mixed-in English words.
+// Picker values are what meeting.json stores (kept stable for old packages); TX_LANG is what the proxy gets. Auto =
+// IdentifyMultipleLanguages over the server's auto_languages (default zh-CN,zh-HK,en-US — Cantonese must be a candidate
+// or it comes out as garbled Mandarin); Mandarin / Cantonese = that language + English, identified per stretch.
 const LANGS = ['auto', 'zh-CN', 'zh-HK', 'en-US'];
-const SHOTS = [0, 20, 30, 60];
+const TX_LANG = { 'zh-CN': 'zh-CN,en-US', 'zh-HK': 'zh-HK,en-US' };
+const SHOTS = [0, 10, 20, 30, 60];
 
 // ---- package fs (host `fs` frames) --------------------------------------------------------------------------------------
 
@@ -230,24 +232,24 @@ const io = new IntersectionObserver((entries) => {
     if (en.isIntersecting) loadShot(img); else unloadShot(img);
   }
 }, { root: log, rootMargin: '900px 0px' });
-async function loadShot(img) {
-  if (img.dataset.state) return;
-  img.dataset.state = 'loading';
-  try {
-    const r = await fsCall('read', img.dataset.shot);
-    if (img.dataset.state !== 'loading') return;
-    const url = URL.createObjectURL(new Blob([r.buffer], { type: 'image/jpeg' }));
-    img.onload = () => { img.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`; img.onload = null; };
-    img.src = url;
-    img.dataset.state = 'loaded';
-  } catch { img.dataset.state = ''; }
+// Each thumbnail is a fixed-ratio placeholder box (data-state '' | loading | loaded | error) whose <img> stays invisible
+// until it has really decoded, so a missing / unloaded / broken source never shows the browser's broken-image icon.
+let shotAspect = '16 / 9'; // last known screenshot ratio (one share per meeting, usually), until a box knows its own
+async function loadShot(box) {
+  if (box.dataset.state) return;
+  box.dataset.state = 'loading';
+  const img = box.firstChild;
+  let r;
+  try { r = await fsCall('read', box.dataset.shot); } catch { if (box.dataset.state === 'loading') box.dataset.state = 'error'; return; }
+  if (box.dataset.state !== 'loading' || img.src) return; // unloaded meanwhile, or an earlier read already set it
+  img.onload = () => { if (box.dataset.state === 'loading') { box.style.aspectRatio = shotAspect = `${img.naturalWidth} / ${img.naturalHeight}`; box.dataset.state = 'loaded'; } };
+  img.onerror = () => { if (img.src) { unloadShot(box); box.dataset.state = 'error'; } };
+  img.src = URL.createObjectURL(new Blob([r.buffer], { type: 'image/jpeg' }));
 }
-function unloadShot(img) {
-  if (img.dataset.state === 'loading') { img.dataset.state = ''; return; }
-  if (img.dataset.state !== 'loaded') return;
-  URL.revokeObjectURL(img.src);
-  img.removeAttribute('src');
-  img.dataset.state = '';
+function unloadShot(box) {
+  const img = box.firstChild;
+  box.dataset.state = ''; // back to the placeholder (an error retries next time it scrolls into view)
+  if (img.src) { URL.revokeObjectURL(img.src); img.removeAttribute('src'); }
 }
 
 function addEntry(e) {
@@ -256,19 +258,37 @@ function addEntry(e) {
   const row = el('div', e.shot ? 'line shot' : 'line');
   row.append(el('span', 'ts', `[${fmt(e.t)}]`));
   if (e.shot) {
-    const img = el('img');
-    img.dataset.shot = e.shot;
-    img.dataset.ts = fmt(e.t);
-    img.alt = t('shotAlt', img.dataset.ts);
-    img.onclick = () => { if (img.src) { const big = $('lightbox').querySelector('img'); big.src = img.src; big.alt = img.alt; $('lightbox').hidden = false; } };
-    row.append(img);
-    io.observe(img);
+    const box = el('div', 'thumb'), img = el('img');
+    box.dataset.shot = e.shot;
+    box.dataset.ts = fmt(e.t);
+    box.dataset.msg = t('shotFail');
+    box.style.aspectRatio = shotAspect;
+    img.alt = t('shotAlt', box.dataset.ts);
+    box.onclick = () => { if (box.dataset.state === 'loaded') openLightbox(img); };
+    box.append(img);
+    row.append(box);
+    io.observe(box);
   } else row.append(el('span', 'tx', e.text));
   log.insertBefore(row, partialEl);
   maybeScroll();
 }
-$('lightbox').onclick = () => { $('lightbox').hidden = true; };
-addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('lightbox').hidden) { e.preventDefault(); $('lightbox').hidden = true; } });
+// Lightbox: same rule — the big <img> only shows once loaded; until then a placeholder, on failure a message.
+const lightbox = $('lightbox'), bigImg = lightbox.querySelector('img');
+bigImg.onload = () => { if (!lightbox.hidden) lightbox.dataset.state = 'loaded'; };
+bigImg.onerror = () => { if (bigImg.src) lightbox.dataset.state = 'error'; };
+function openLightbox(img) {
+  lightbox.dataset.state = 'loading';
+  bigImg.alt = img.alt;
+  bigImg.src = img.src;
+  lightbox.hidden = false;
+}
+function closeLightbox() {
+  lightbox.hidden = true;
+  lightbox.dataset.state = '';
+  bigImg.removeAttribute('src'); // the thumbnail may revoke its blob URL; the next open sets src afresh
+}
+lightbox.onclick = closeLightbox;
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && !lightbox.hidden) { e.preventDefault(); closeLightbox(); } });
 
 // ---- package lifecycle ------------------------------------------------------------------------------------------------------
 
@@ -396,6 +416,7 @@ async function takeShot(r) {
     c.getContext('2d').drawImage(frame.src, 0, 0, c.width, c.height);
     const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', 0.8));
     if (!blob) return;
+    shotAspect = `${c.width} / ${c.height}`;
     const at = Date.now();
     const off = at - meeting.startedAt;
     const path = `shots/${pad(Math.floor(off / 1000), 6)}.jpg`;
@@ -430,7 +451,7 @@ function releaseShots(before) {
 // ---- transcription (WS proxy) ---------------------------------------------------------------------------------------------
 
 function txOpen() {
-  const lang = $('lang').value;
+  const lang = TX_LANG[$('lang').value] ?? $('lang').value;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(`${proto}//${location.host}/api/transcribe/stream?ext=htrans&lang=${encodeURIComponent(lang)}`);
   ws.binaryType = 'arraybuffer';
@@ -705,7 +726,8 @@ function applyLang() {
   $('capNote').textContent = capKey ? t(capKey) : '';
   $('capNote').hidden = !capKey;
   $('lightbox').title = t('closeHint');
-  for (const img of log.querySelectorAll('img[data-shot]')) img.alt = t('shotAlt', img.dataset.ts);
+  $('lightbox').dataset.msg = t('shotFail');
+  for (const box of log.querySelectorAll('.thumb')) { box.firstChild.alt = t('shotAlt', box.dataset.ts); box.dataset.msg = t('shotFail'); }
   renderNotices();
   $('jump').textContent = t('jump');
   const sel = $('shot'), cur = sel.value || '0';
