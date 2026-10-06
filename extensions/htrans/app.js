@@ -46,7 +46,7 @@ const T = {
     noRecorder: 'This browser cannot record webm/opus — no audio file will be saved (transcript and screenshots still work).',
     prompt: (p) => `Please read ${p}/transcript.md (the meeting may still be in progress) and summarize what has been said so far`,
     appName: 'Meeting Recorder', copyShort: 'Copy prompt', refresh: 'Refresh microphone list', elapsed: 'Recorded time',
-    shotAlt: (ts) => `Screenshot at ${ts}`, closeHint: 'Click to close',
+    shotAlt: (ts) => `Screenshot at ${ts}`, closeHint: 'Click or press Esc to close',
     sysTip: 'After Start a share dialog opens: pick a tab or the entire screen and tick “Share audio”.',
     capNoSys: 'This browser can’t record system / video sound (needs desktop Chrome / Edge, or the Halo desktop app).',
     capNone: 'This browser can’t record system / video sound or take screenshots (needs desktop Chrome / Edge, or the Halo desktop app).',
@@ -84,7 +84,7 @@ const T = {
     noRecorder: '当前浏览器不支持 webm/opus 录音——不会保存音频文件（转写和截图仍可用）。',
     prompt: (p) => `请阅读 ${p}/transcript.md（会议可能仍在进行），概括到目前为止的内容`,
     appName: '会议录音', copyShort: '复制提示', refresh: '刷新麦克风列表', elapsed: '已录时长',
-    shotAlt: (ts) => `截图 ${ts}`, closeHint: '点击关闭',
+    shotAlt: (ts) => `截图 ${ts}`, closeHint: '点击或按 Esc 关闭',
     sysTip: '点开始后会弹出共享窗口：选标签页或整个屏幕，并勾选「分享音频」。',
     capNoSys: '此浏览器不能录系统 / 视频声音（需 Chrome / Edge 电脑版，或 Halo 桌面客户端）。',
     capNone: '此浏览器不能录系统 / 视频声音，也不能截屏（需 Chrome / Edge 电脑版，或 Halo 桌面客户端）。',
@@ -157,7 +157,7 @@ let bundlePath = '';
 let title = '';
 let phase = 'idle'; // idle | starting | recording | stopping | paused | stopped
 let rec = null; // the active run (runtime objects), null when not recording
-const tx = { ws: null, state: 'off', ready: false, startWall: 0, failures: 0, backoff: 1000, retryAt: 0, readyAt: 0, err: null, closing: false, onClosed: null };
+const tx = { ws: null, state: 'off', ready: false, startWall: 0, partialAt: 0, partialSeen: 0, failures: 0, backoff: 1000, retryAt: 0, readyAt: 0, err: null, closing: false, onClosed: null };
 
 const setPhase = (p) => { phase = p; renderControls(); };
 
@@ -268,6 +268,7 @@ function addEntry(e) {
   maybeScroll();
 }
 $('lightbox').onclick = () => { $('lightbox').hidden = true; };
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('lightbox').hidden) { e.preventDefault(); $('lightbox').hidden = true; } });
 
 // ---- package lifecycle ------------------------------------------------------------------------------------------------------
 
@@ -324,6 +325,7 @@ async function loadPackage() {
   $('shot').value = String(meeting.shotIntervalSec ?? 0);
   if (meeting.asr?.language) $('lang').value = meeting.asr.language;
   if (!$('lang').value) $('lang').value = 'auto';
+  entries.sort((a, b) => (a.t ?? 0) - (b.t ?? 0)); // stable; packages from <= 1.0.2 may have shots before earlier speech
   for (const e of entries) addEntry(e);
   stick = true;
   log.scrollTop = log.scrollHeight;
@@ -399,11 +401,30 @@ async function takeShot(r) {
     const path = `shots/${pad(Math.floor(off / 1000), 6)}.jpg`;
     const buf = await blob.arrayBuffer();
     await enqueue(path, () => fsCall('write', path, buf));
-    const e = { t: off, at, shot: path };
-    appendText('transcript.md', `[${fmt(off)}] 📷 ${path}\n`);
-    appendText('transcript.jsonl', JSON.stringify(e) + '\n');
-    addEntry(e);
+    heldShots.push({ t: off, at, shot: path });
+    releaseShots(watermark());
   } finally { frame.done(); }
+}
+
+// Timeline order: a final is stamped with its sentence's *start* but only arrives once the sentence ends, so a
+// screenshot taken mid-sentence would land before that sentence. Its timeline line (not the image file) is held until
+// no earlier speech can still arrive.
+const heldShots = [];
+function writeEntry(e) {
+  appendText('transcript.md', `[${fmt(e.t)}] ${e.shot ? `📷 ${e.shot}` : e.text}\n`);
+  appendText('transcript.jsonl', JSON.stringify(e) + '\n');
+  addEntry(e);
+}
+/** Wall-clock ms before which every sentence is final: no stream -> everything; a partial in progress -> its start;
+ *  otherwise speech that began over ~2 s ago would already show as a partial. A partial silent for 10 s is treated as
+ *  dropped (the proxy skips empty finals), so a long quiet stretch doesn't hold screenshots indefinitely. */
+const watermark = () => {
+  const now = Date.now();
+  if (!tx.ws) return Infinity;
+  return tx.partialAt && now - tx.partialSeen < 10000 ? tx.partialAt : now - 2000;
+};
+function releaseShots(before) {
+  while (heldShots.length && heldShots[0].at < before) writeEntry(heldShots.shift());
 }
 
 // ---- transcription (WS proxy) ---------------------------------------------------------------------------------------------
@@ -413,12 +434,17 @@ function txOpen() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const ws = new WebSocket(`${proto}//${location.host}/api/transcribe/stream?ext=htrans&lang=${encodeURIComponent(lang)}`);
   ws.binaryType = 'arraybuffer';
-  Object.assign(tx, { ws, state: 'connecting', ready: false, startWall: 0, err: null, closing: false, retryAt: 0 });
+  Object.assign(tx, { ws, state: 'connecting', ready: false, startWall: 0, partialAt: 0, err: null, closing: false, retryAt: 0 });
   ws.onmessage = (ev) => {
     if (tx.ws !== ws || typeof ev.data !== 'string') return;
     let m; try { m = JSON.parse(ev.data); } catch { return; }
     if (m.type === 'ready') { tx.ready = true; tx.state = 'live'; tx.readyAt = Date.now(); tx.failures = 0; setNotice('tx', null); }
-    else if (m.type === 'partial') partialEl.textContent = m.text || '';
+    else if (m.type === 'partial') {
+      partialEl.textContent = m.text || '';
+      tx.partialAt = tx.startWall ? Math.round(tx.startWall + m.start * 1000) : 0;
+      tx.partialSeen = Date.now();
+      releaseShots(watermark());
+    }
     else if (m.type === 'final') onFinal(m);
     else if (m.type === 'error') tx.err = m;
     renderTicker(true);
@@ -427,8 +453,9 @@ function txOpen() {
     if (tx.ws !== ws) return;
     const livedMs = tx.ready ? Date.now() - tx.readyAt : 0;
     const wasReady = tx.ready;
-    Object.assign(tx, { ws: null, ready: false, startWall: 0 });
+    Object.assign(tx, { ws: null, ready: false, startWall: 0, partialAt: 0 });
     partialEl.textContent = '';
+    releaseShots(Infinity); // the partial in progress (if any) will never finalize
     tx.onClosed?.(); tx.onClosed = null;
     if (tx.closing || !rec) { tx.state = 'off'; return; }
     // Reconnect policy: transient drops (incl. Transcribe's 4 h cap) retry after ~1 s doubling to 30 s; auth / permission
@@ -454,13 +481,12 @@ function txOpen() {
 function onFinal(m) {
   const text = (m.text || '').trim();
   partialEl.textContent = '';
+  tx.partialAt = 0;
   if (!text || !tx.startWall) return;
   const at = Math.round(tx.startWall + m.start * 1000);
   const off = at - meeting.startedAt;
-  const e = { t: off, end: Math.round(tx.startWall + m.end * 1000 - meeting.startedAt), at, text, lang: m.lang || $('lang').value };
-  appendText('transcript.md', `[${fmt(off)}] ${text}\n`);
-  appendText('transcript.jsonl', JSON.stringify(e) + '\n');
-  addEntry(e);
+  releaseShots(at);
+  writeEntry({ t: off, end: Math.round(tx.startWall + m.end * 1000 - meeting.startedAt), at, text, lang: m.lang || $('lang').value });
 }
 
 function onPcm(buf) {
@@ -586,6 +612,7 @@ async function endRun(kind) {
   }
   if (r.recorder && r.recorder.state !== 'inactive') { r.recorder.stop(); await Promise.race([r.recorderStopped, sleep(3000)]); }
   await txFinish();
+  releaseShots(Infinity); // txFinish's timeout path closes the socket without the onclose release
   rec = null;
   r.node?.port.close();
   stopTracks(r.micStream, r.display);
@@ -613,6 +640,7 @@ function tick() {
     r.shotBusy = takeShot(r).catch((e) => console.warn('[htrans] shot', e)).finally(() => { r.shotBusy = null; });
   }
   if (!tx.ws && tx.state !== 'off' && tx.retryAt && now >= tx.retryAt) txOpen();
+  if (heldShots.length) releaseShots(watermark());
   renderTicker();
 }
 

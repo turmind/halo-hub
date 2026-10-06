@@ -46,6 +46,8 @@ Offsets are `wall clock − meeting.json.startedAt`. Pause ends the current run;
 
 Screenshots (`ImageCapture.grabFrame`, or a hidden `<video>` as a fallback) are JPEG q0.8, max 1600 px wide; with "skip unchanged frames" a 32×18 grayscale thumbnail is compared with the last kept frame and near-identical frames are dropped.
 
+The timeline (`transcript.md`, `transcript.jsonl`, the on-screen log) is in time order. A sentence is stamped with its start but only arrives once it is final, so a screenshot's line (the image file is written at once) waits until no earlier sentence can still come: the sentence being recognized started after it, ~2 s passed without one, or the stream closed / the run paused or stopped. Packages from 1.0.2 and earlier are shown sorted by time (files are not rewritten).
+
 ## Caveats
 
 - Cloud transcription: the audio of the meeting is sent to AWS. The transcript is machine output and may contain errors.
