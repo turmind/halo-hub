@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { CaptureUpdateAction, Excalidraw, MainMenu, getCommonBounds, hashElementsVersion, languages, restore, serializeAsJSON } from '@excalidraw/excalidraw'
+import { CaptureUpdateAction, Excalidraw, MainMenu, exportToBlob, exportToSvg, getCommonBounds, hashElementsVersion, languages, restore, serializeAsJSON } from '@excalidraw/excalidraw'
 
 // Halo Canvas extension protocol v1 — see the Halo docs (design/canvas-extensions.md).
 const post = (m, transfer) => parent.postMessage({ haloExt: 1, ...m }, '*', transfer)
@@ -12,6 +12,10 @@ const pickLang = () => {
   return codes.find((c) => c.toLowerCase() === nav) ?? codes.find((c) => c.toLowerCase().split('-')[0] === nav.split('-')[0]) ?? 'en'
 }
 const langCode = pickLang()
+const zh = langCode.startsWith('zh')
+const L = zh
+  ? { png: '导出 PNG', svg: '导出 SVG', empty: '画布为空，没有可导出的内容', exported: (p) => `已导出到 ${p}`, failed: (m) => `导出失败：${m}` }
+  : { png: 'Export PNG', svg: 'Export SVG', empty: 'Nothing to export: the board is empty', exported: (p) => `Exported to ${p}`, failed: (m) => `Export failed: ${m}` }
 
 // onChange also fires for selection / scroll / tool switches, so "dirty" compares a signature of what the
 // file actually stores: element versions, canvas background + grid, and the set of embedded images.
@@ -32,6 +36,9 @@ const parseBoard = (buffer) => {
 function App() {
   const [doc, setDoc] = useState(null) // { initialData } — set by the first load only; later loads update the scene in place
   const [theme, setTheme] = useState('light')
+  // init.export: the host writes `export` frames next to the file (older hosts omit it → no export items).
+  const [canExport, setCanExport] = useState(false)
+  const stemRef = useRef('board') // open file name without its extension — exports are <stem>.png / .svg
   const apiRef = useRef(null)
   // baseline: signature of what is on disk; current: latest seen; reported: dirty state the host knows about.
   const sync = useRef({ baseline: null, current: null, reported: false, awaitingBaseline: false })
@@ -79,12 +86,41 @@ function App() {
     post({ type: 'save', buffer }, [buffer])
   }
 
+  // Excalidraw's own image export needs downloads (not granted to the sandbox); render here, let the host write the file.
+  const exportImage = async (kind) => {
+    const api = apiRef.current
+    if (!api) return
+    const elements = api.getSceneElements()
+    if (!elements.length) { api.setToast({ message: L.empty, closable: true, duration: 4000 }); return }
+    const opts = { elements, appState: { ...api.getAppState(), exportBackground: true, exportWithDarkMode: false }, files: api.getFiles(), exportPadding: 10 }
+    let buffer
+    try {
+      if (kind === 'png') {
+        const blob = await exportToBlob({ ...opts, mimeType: 'image/png', getDimensions: (width, height) => ({ width: width * 2, height: height * 2, scale: 2 }) })
+        buffer = await blob.arrayBuffer()
+      } else {
+        const svg = await exportToSvg(opts)
+        buffer = new TextEncoder().encode(new XMLSerializer().serializeToString(svg)).buffer
+      }
+    } catch (err) {
+      api.setToast({ message: L.failed(err.message), closable: true, duration: 4000 })
+      return
+    }
+    post({ type: 'export', name: `${stemRef.current}.${kind}`, buffer }, [buffer])
+  }
+
   useEffect(() => {
     const onMessage = (e) => {
       if (e.source !== parent || e.data?.haloExt !== 1) return
       const m = e.data
       if (m.type === 'init' || m.type === 'theme') setTheme(m.theme === 'dark' ? 'dark' : 'light')
-      else if (m.type === 'load') {
+      if (m.type === 'init') {
+        setCanExport(m.export === true)
+        stemRef.current = String(m.file?.name ?? '').replace(/\.[^.]*$/, '') || 'board'
+      } else if (m.type === 'exported') apiRef.current?.setToast({ message: L.exported(m.path), closable: true, duration: 4000 })
+      else if (m.type === 'export-error') {
+        if (m.reason !== 'cancelled') apiRef.current?.setToast({ message: L.failed(m.message), closable: true, duration: 4000 })
+      } else if (m.type === 'load') {
         let board
         try { board = parseBoard(m.buffer) } catch (err) { post({ type: 'error', message: `Cannot open as an Excalidraw board: ${err.message}` }); return }
         const s = sync.current
@@ -167,6 +203,9 @@ function App() {
         <MainMenu.DefaultItems.CommandPalette />
         <MainMenu.DefaultItems.Help />
         <MainMenu.DefaultItems.ClearCanvas />
+        {canExport && <MainMenu.Separator />}
+        {canExport && <MainMenu.Item onSelect={() => void exportImage('png')}>{L.png}</MainMenu.Item>}
+        {canExport && <MainMenu.Item onSelect={() => void exportImage('svg')}>{L.svg}</MainMenu.Item>}
         <MainMenu.Separator />
         <MainMenu.DefaultItems.ChangeCanvasBackground />
       </MainMenu>

@@ -15,7 +15,7 @@ Halo Canvas preview extension: opens `.excalidraw` files in the official [Excali
 
 ## Limitations (iframe sandbox: no downloads, popups, clipboard permission, network)
 
-- Export to PNG/SVG, "Open" and "Save to…" are removed (they need downloads / file handles); the board is saved through Halo instead. Images are added with the image tool (file picker) or by paste / drag-and-drop.
+- Excalidraw's own image export, "Open" and "Save to…" are removed (they need downloads / file handles); the board is saved through Halo instead. On a Halo host that supports export (`init.export`), the main menu has **Export PNG** / **Export SVG**, which save `<board>.png` / `<board>.svg` next to the file (overwriting asks first) with a Download link in Halo's banner. Images are added with the image tool (file picker) or by paste / drag-and-drop.
 - Collaboration, Excalidraw+ and library browsing (libraries.excalidraw.com) are unavailable offline and hidden. The shape library panel still works for the current session, but it is not persisted between openings.
 - Web-embed elements and hyperlinks do not open: clicking a link shows the URL in a toast.
 - AI features (text-to-diagram, diagram-to-code) need Excalidraw's backend and are disabled. Mermaid → Excalidraw works offline.
