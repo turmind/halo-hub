@@ -34,6 +34,9 @@
   let edits = 0;           // autosave counter — a save is "clean" only if no edit landed after it was taken
   let sentEdits = -1;      // `edits` at the time of the newest `save` frame
   let saveTimer = null;
+  let canExport = false;   // init.export: the host writes `export` frames next to the file (older hosts omit it)
+  let stem = 'diagram';    // open file name without its extension — exports are <stem>.<ext>
+  let lang = 'en';
 
   const toDio = (m) => frame.contentWindow.postMessage(JSON.stringify(m), '*');
   const setDark = (theme) => document.body.classList.toggle('dark', theme === 'dark');
@@ -88,8 +91,24 @@
     const err = check(xml);
     if (err) { loaded = false; post({ type: 'error', message: err }); showMessage(err, true); return; }
     if (!dioReady) { pending = xml; return; }
-    toDio({ action: 'load', xml, autosave: 1, fit: 1, border: 20, modified: 'unsavedChanges', saveAndExit: '0', noSaveBtn: '1', noExitBtn: '1' });
+    // exportProtocol: File ▸ Export as ▸ … posts {event:'export'} to us instead of a (sandbox-blocked) download.
+    toDio({ action: 'load', xml, autosave: 1, fit: 1, border: 20, modified: 'unsavedChanges', saveAndExit: '0', noSaveBtn: '1', noExitBtn: '1', ...(canExport ? { exportProtocol: 1 } : {}) });
   }
+
+  // draw.io's {event:'export'}: `data` is a data URL (png / jpg / webp) or raw text (svg / xml / html).
+  // Its `filename` is odd ("-Order flow.drawio.png"), so only its extension is kept.
+  function sendExport(m) {
+    const data = String(m.data ?? '');
+    const b64 = data.match(/^data:[^,]*;base64,/);
+    const bytes = b64 ? Uint8Array.from(atob(data.slice(b64[0].length)), (c) => c.charCodeAt(0)) : new TextEncoder().encode(data);
+    const fromName = String(m.filename ?? '').match(/\.([a-z0-9]{1,8})$/i);
+    const ext = (fromName ? fromName[1] : m.format === 'jpeg' ? 'jpg' : String(m.format || 'bin')).toLowerCase();
+    const buffer = bytes.buffer;
+    post({ type: 'export', name: `${stem}.${ext}`, buffer }, [buffer]);
+  }
+
+  // No `modified` key: the status action then leaves draw.io's modified flag as it is.
+  const status = (message) => { if (dioReady) toDio({ action: 'status', message }); };
 
   function sendSave(xml) {
     clearTimeout(saveTimer);
@@ -138,6 +157,9 @@
       case 'save': // Ctrl/Cmd+S inside the editor, or our own invokeAction
         if (loaded) sendSave(m.xml);
         break;
+      case 'export': // File ▸ Export as ▸ … (exportProtocol)
+        if (canExport) sendExport(m);
+        break;
     }
   }
 
@@ -151,8 +173,20 @@
     const m = e.data;
     switch (m.type) {
       case 'init':
+        canExport = m.export === true;
+        stem = String(m.file?.name ?? '').replace(/\.[^.]*$/, '') || 'diagram';
+        lang = m.lang === 'zh' ? 'zh' : 'en';
         setDark(m.theme);
         createEditor(m.theme);
+        break;
+      case 'lang':
+        lang = m.lang === 'zh' ? 'zh' : 'en';
+        break;
+      case 'exported':
+        status(lang === 'zh' ? `已导出到 ${m.path}` : `Exported to ${m.path}`);
+        break;
+      case 'export-error':
+        if (m.reason !== 'cancelled') status(lang === 'zh' ? `导出失败：${m.message}` : `Export failed: ${m.message}`);
         break;
       case 'load': // first load, or the file changed on disk while we were clean
         open(new TextDecoder().decode(m.buffer));

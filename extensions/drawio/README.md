@@ -9,7 +9,7 @@ Halo Canvas preview extension: opens `.drawio` / `.dio` files in the **full draw
 - If the file changes on disk while you have no unsaved edits (an agent rewrote it) the open diagram is replaced; with unsaved edits Halo keeps yours and reports a conflict on the next save.
 - Theme: the editor starts in Halo's current light/dark theme and follows it when the admin theme is switched.
 
-Limits of the offline / sandboxed setup: no Google Drive / Dropbox / OneDrive / GitHub pickers, no server-side export (PDF goes through the print dialog), no *Insert ▸ Template* (draw.io hides the gallery when offline, so the templates are not shipped), no real-time collaboration. The iframe sandbox has no popups or downloads, so *File ▸ Export as* (PNG / SVG / PDF / XML) opens its dialog but cannot save a file, and links in diagrams do not open. Shape search, all shape libraries, MathJax (`$$…$$`), *Insert ▸ Advanced ▸ Mermaid* and the layout engines work locally.
+Limits of the offline / sandboxed setup: no Google Drive / Dropbox / OneDrive / GitHub pickers, no server-side export (PDF goes through the print dialog), no *Insert ▸ Template* (draw.io hides the gallery when offline, so the templates are not shipped), no real-time collaboration. The iframe sandbox has no popups or downloads, so *File ▸ Export as* saves **into the workspace, next to the diagram** (`flow.drawio` → `flow.png`; overwriting asks first), and Halo shows a banner with a Download link — on a Halo host that supports export (`init.export`); on an older host the export dialog opens but cannot save a file. PNG, JPEG, WebP, SVG, HTML and XML export work; *PDF* shows "Error updating preview" (offline draw.io has no PDF renderer — use *File ▸ Print*), and *Animation* goes through the same path but needs a diagram with animation steps. Links in diagrams do not open. Shape search, all shape libraries, MathJax (`$$…$$`), *Insert ▸ Advanced ▸ Mermaid* and the layout engines work locally.
 
 Opening, editing and saving make **no network requests**. The only exception is content that itself points at the internet: a diagram with `fontSource=https://fonts.googleapis.com/…` text (also Mermaid's default "redux" theme, which uses the *Recursive* web font) or image cells with `http(s)` URLs make the browser fetch them like any web page would; offline they fall back silently.
 
@@ -39,5 +39,6 @@ node scripts/pack.mjs extensions/drawio   # → dist/drawio-1.0.0.zip (~22 MB)
 | `save-request` | `{action:'invokeAction', actionName:'save'}` → editor answers `{event:'save', xml}` → `save` frame; a 2 s fallback uses the last autosave |
 | `saved` | clears dirty (`{action:'status', modified:false}`), unless more edits arrived while the save was in flight |
 | `theme` | invokes draw.io's `lightMode` / `darkMode` action |
+| `init.export` | `load` also carries `exportProtocol:1` → *Export as* posts `{event:'export', format, data}` → `export` frame `<stem>.<ext>`; `exported` / `export-error` show in draw.io's status line |
 
 Licenses: see `LICENSE` (glue code, MIT), `LICENSE-APACHE-2.0` and `NOTICE` (draw.io and bundled libraries).
