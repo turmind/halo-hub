@@ -27,7 +27,7 @@ dist/               Build output — packaged zips, not committed
 | `ipynb` | `.ipynb` | — | Jupyter notebook viewer (markdown, math, outputs) |
 | `htrans` | `.htrans` (folder) | ✓ | Meeting recorder: mic + system sound, live Amazon Transcribe captions, timed screenshots; needs the server's transcribe proxy + AWS credentials |
 | `megadrive` | `.mega` (folder) | — | Offline Mega Drive / Genesis (+ Master System / Game Gear) emulator, EmulatorJS + Genesis Plus GX (~1.5 MB zip). The folder holds `game.json` (which ROM, anywhere on the machine — `.zip` `.7z` `.md` `.gen` `.smd` `.bin` `.sms` `.gg`, read in place, never copied — and the display filter) and `saves/`; keyboard, gamepad, touch stick; non-commercial core license, no ROMs; release-zip install only |
-| `arcade` | `.arcade` (folder) | — | Offline arcade emulator, EmulatorJS + FinalBurn Neo (~8.5 MB zip). The folder holds `game.json` (which workspace romset — an unmodified `.zip` named after the set, read in place, never copied — and the display filter) and `saves/`; keyboard, gamepad, touch stick; FBNeo licence forbids any commercial use, no ROMs; release-zip install only |
+| `arcade` | `.arcade` (folder) | — | Offline arcade emulator, EmulatorJS + FinalBurn Neo (~8.5 MB zip). The folder holds `game.json` (which romset, anywhere on the machine — an unmodified `.zip` named after the set, read in place, never copied — and the display filter) and `saves/`; keyboard, gamepad, touch stick; FBNeo licence forbids any commercial use, no ROMs; release-zip install only |
 
 **Models** (`models/<id>.yaml`, release tag `models-v<YYYY.MM.DD>`)
 

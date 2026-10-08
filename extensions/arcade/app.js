@@ -1,9 +1,10 @@
 'use strict';
 // Halo canvas extension "arcade": arcade romsets on EmulatorJS 4.2.3 with the FinalBurn Neo core, fully offline.
 // Opens an `.arcade` bundle (a directory) holding game.json — which romset, which display filter — and
-// saves/<set>.state. The romset stays wherever it is in the workspace: picked with the host's file picker and read in
-// place every time (`fs` scope 'workspace', capability workspace-read); nothing but game.json and saves/ is ever
-// written into the bundle. Halo protocol v1: ready → init (bundle) → fs / pick; theme / lang frames live.
+// saves/<set>.state. The romset stays wherever it is on the machine: picked with the host's file picker and read in
+// place every time (capability fs-read; `fs` scope 'workspace' for a romset in the workspace, 'system' for an
+// absolute path outside it); nothing but game.json and saves/ is ever written into the bundle.
+// Halo protocol v1: ready → init (bundle) → fs / pick; theme / lang frames live.
 //
 // EmulatorJS owns the core, canvas, audio and the touch buttons. Keyboard, physical gamepad, the touch stick, pause and
 // save states are ours (EmulatorJS's input handlers are switched off in boot()): EmulatorJS binds one key or pad
@@ -33,15 +34,15 @@
       saved: '已存档（F4 读档）', loaded: '已读档', noSave: '还没有存档 — 先按 F2', saveFail: '存档失败', loadFail: '读档失败',
       fsFail: (e) => `写入失败：${e}`, pickFail: (e) => `打不开文件选择：${e}`,
       kb: '键盘（1P）', gp: '手柄', act: '动作',
-      dir: '方向', lp: '轻拳', mp: '中拳', hp: '重拳', lk: '轻脚', mk: '中脚', hk: '重脚', btn: (n) => `按键 ${n}`,
+      dir: '方向', btn: (n) => `按键 ${n}`,
       startK: '开始', coin: '投币', pauseK: '暂停 / 继续', qsave: '快速存档', qload: '快速读档', mute: '静音', fullK: '全屏',
       dpad: '十字键 / 左摇杆', fullHow: '工具栏按钮 / 双击画面', none: '—',
       notes: [
-        '格斗游戏（街霸类）用 拳 / 脚 布局；其他游戏的 按键 1–6 是括号里的编号。',
+        '按键编号沿用 FinalBurn Neo：J K 是 1 2（大多数游戏只用这两个），U I 是 3 4，L 是 5，O 是 6。六键格斗游戏例外：游戏里的 1 2 3 在上排 U I O，4 5 6 在下排 J K L。',
         '快速存档（F2 / F4）保存在这个 .arcade 目录的 saves/ 里，跟着工作区走。',
-        'romset 不会复制进这个目录，game.json 只记下它的相对位置；挪了地方就点「换一个 ROM」重新选。',
+        'romset 不会复制进这个目录，game.json 只记下它的位置（在工作区里记相对位置，在工作区外记绝对路径）；挪了地方就点「换一个 ROM」重新选。',
         '在 Halo 里放大画布时，Esc 用于退出放大。',
-        '触屏设备上：左半屏任意位置按下就出现摇杆（八个方向），右边是拳脚按钮；用了键盘或手柄就自动隐藏，再摸一下屏幕又会出现。工具栏「虚拟手柄」可切换 自动 / 开 / 关。',
+        '触屏设备上：左半屏任意位置按下就出现摇杆（八个方向），右边是动作按钮；用了键盘或手柄就自动隐藏，再摸一下屏幕又会出现。工具栏「虚拟手柄」可切换 自动 / 开 / 关。',
         '蓝牙手柄连上后要先按一下任意键，浏览器才会识别。',
       ],
       lic: 'EmulatorJS 4.2.3（GPL-3.0）+ FinalBurn Neo（禁止任何营利用途）· 不含任何游戏 ROM',
@@ -64,15 +65,15 @@
       saved: 'State saved (F4 to load)', loaded: 'State loaded', noSave: 'No saved state yet — press F2 first', saveFail: 'Save failed', loadFail: 'Load failed',
       fsFail: (e) => `Could not write: ${e}`, pickFail: (e) => `Could not open the file picker: ${e}`,
       kb: 'Keyboard (1P)', gp: 'Gamepad', act: 'Action',
-      dir: 'Move', lp: 'Light punch', mp: 'Medium punch', hp: 'Heavy punch', lk: 'Light kick', mk: 'Medium kick', hk: 'Heavy kick', btn: (n) => `Button ${n}`,
+      dir: 'Move', btn: (n) => `Button ${n}`,
       startK: 'Start', coin: 'Insert coin', pauseK: 'Pause / resume', qsave: 'Quick save', qload: 'Quick load', mute: 'Mute', fullK: 'Fullscreen',
       dpad: 'D-pad / left stick', fullHow: 'toolbar button / double-click the game', none: '—',
       notes: [
-        'Fighting games (Street Fighter style) use the punch / kick layout; in other games buttons 1–6 are the numbers in brackets.',
+        'Button numbers follow FinalBurn Neo: J K are 1 2 (most games use only these), U I are 3 4, L is 5, O is 6. Six-button fighting games differ: the game’s buttons 1 2 3 are the top row U I O and 4 5 6 the bottom row J K L.',
         'Quick saves (F2 / F4) go to saves/ inside this .arcade folder and travel with the workspace.',
-        'The romset is never copied into this folder — game.json only stores where it is. If you move it, pick it again with “Change ROM”.',
+        'The romset is never copied into this folder — game.json only stores where it is (relative to this folder inside the workspace, an absolute path outside it). If you move it, pick it again with “Change ROM”.',
         'When the Halo canvas is maximized, Esc exits the maximized view.',
-        'Touch screens: press anywhere in the left half for a stick (8 directions); punch / kick buttons are on the right. They hide when you use a keyboard or gamepad and come back on the next touch. The “Touch controls” toolbar button cycles Auto / On / Off.',
+        'Touch screens: press anywhere in the left half for a stick (8 directions); the action buttons are on the right. They hide when you use a keyboard or gamepad and come back on the next touch. The “Touch controls” toolbar button cycles Auto / On / Off.',
         'A Bluetooth gamepad shows up only after you press one of its buttons.',
       ],
       lic: 'EmulatorJS 4.2.3 (GPL-3.0) + FinalBurn Neo (no commercial use of any kind) · no game ROMs included',
@@ -134,9 +135,13 @@
   const fsCall = (op, path, extra = {}) => request({ type: 'fs', op, path, ...extra }, extra.buffer ? [extra.buffer] : []);
   const enc = (s) => new TextEncoder().encode(s).buffer;
 
-  /** `rel` (POSIX, relative to the bundle dir, may climb with ../) → workspace path; null if absolute or above the root. */
+  /** Absolute = outside the workspace: POSIX `/…` or Windows `C:/…` (the host always sends forward slashes). */
+  const isAbs = (p) => p.startsWith('/') || /^[A-Za-z]:\//.test(p);
+  /** game.json `rom` → where to read it: an absolute path as-is with scope 'system'; else POSIX relative to the
+   *  bundle dir (may climb with ../) → a workspace path, scope 'workspace'. null if empty or above the root. */
   function resolveRom(dir, rel) {
-    if (typeof rel !== 'string' || !rel || rel.startsWith('/')) return null;
+    if (typeof rel !== 'string' || !rel) return null;
+    if (isAbs(rel)) return { path: rel, scope: 'system' };
     const out = dir.split('/').filter(Boolean);
     for (const seg of rel.split('/')) {
       if (seg === '' || seg === '.') continue;
@@ -144,7 +149,7 @@
       else if (!out.length) return null;
       else out.pop();
     }
-    return out.length ? out.join('/') : null;
+    return out.length ? { path: out.join('/'), scope: 'workspace' } : null;
   }
   /** workspace path → relative to the bundle dir (inside it: "gridlee.zip"; elsewhere: "../roms/gridlee.zip"). */
   function relFromBundle(dir, target) {
@@ -176,17 +181,17 @@
   // ── input ids ─────────────────────────────────────────────────────────
   // EmulatorJS simulate_input indices are libretro RetroPad ids.
   const R = { B: 0, Y: 1, SELECT: 2, START: 3, UP: 4, DOWN: 5, LEFT: 6, RIGHT: 7, A: 8, X: 9, L: 10, R: 11 };
-  // FinalBurn Neo classic RetroPad (retro_input.cpp): 6-button fighters (bStreetFighterLayout) take LP MP HP = Y X L,
-  // LK MK HK = B A R; every other game takes Fire 1–6 = B A Y X R L. Same keys either way, so the grid below works
-  // for both: J K = Fire 1 2, U I = Fire 3 4, L = Fire 5, O = Fire 6. Coin = SELECT, Start = START.
-  const SF = { LP: R.Y, MP: R.X, HP: R.L, LK: R.B, MK: R.A, HK: R.R };
-  const FIRE = { [SF.LK]: 1, [SF.MK]: 2, [SF.LP]: 3, [SF.MP]: 4, [SF.HK]: 5, [SF.HP]: 6 };
+  // FinalBurn Neo classic RetroPad (retro_input.cpp): every game takes Fire 1–6 = B A Y X R L, i.e. J K = 1 2,
+  // U I = 3 4, L = 5, O = 6 — the numbers on the labels. 6-button fighters (bStreetFighterLayout) instead put game
+  // buttons 1 2 3 on Y X L (top row U I O) and 4 5 6 on B A R (bottom row J K L): same keys, other numbering, noted in
+  // help. Coin = SELECT, Start = START.
+  const FIRE = [R.B, R.A, R.Y, R.X, R.R, R.L]; // FIRE[n - 1] = Fire n
   const keyMap = () => ({
     KeyW: R.UP, KeyS: R.DOWN, KeyA: R.LEFT, KeyD: R.RIGHT, Enter: R.START, NumpadEnter: R.START, Space: R.SELECT,
-    KeyU: SF.LP, KeyI: SF.MP, KeyO: SF.HP, KeyJ: SF.LK, KeyK: SF.MK, KeyL: SF.HK,
+    KeyJ: FIRE[0], KeyK: FIRE[1], KeyU: FIRE[2], KeyI: FIRE[3], KeyL: FIRE[4], KeyO: FIRE[5],
   });
   // Standard-mapping gamepad button index → RetroPad id. 4 (LB) = our pause, 12–15 + left stick = directions.
-  const padMap = () => ({ 8: R.SELECT, 9: R.START, 2: SF.LP, 3: SF.MP, 5: SF.HP, 0: SF.LK, 1: SF.MK, 7: SF.HK });
+  const padMap = () => ({ 8: R.SELECT, 9: R.START, 0: FIRE[0], 1: FIRE[1], 2: FIRE[2], 3: FIRE[3], 7: FIRE[4], 5: FIRE[5] });
 
   // ── state ─────────────────────────────────────────────────────────────
   let file = null;                 // init.file: the bundle directory (workspace-relative path)
@@ -224,12 +229,13 @@
     catch (e) { if (e.code !== 'not-found') console.warn('[arcade] game.json', e); game = { version: 1 }; }
     renderShader();
     if (typeof game.rom !== 'string' || !game.rom) return show('choose');
-    romPath = resolveRom(file.path, game.rom);
+    const loc = resolveRom(file.path, game.rom);
+    romPath = loc?.path ?? null;
     readError = null;
     let buf;
     try {
-      if (!romPath) return show('missing');
-      buf = (await fsCall('read', romPath, { scope: 'workspace' })).buffer;
+      if (!loc) return show('missing');
+      buf = (await fsCall('read', loc.path, { scope: loc.scope })).buffer;
     } catch (e) {
       if (e.code !== 'not-found' && e.code !== 'invalid-path') readError = e.message;
       return show('missing');
@@ -245,7 +251,9 @@
     let r;
     try { r = await request({ type: 'pick', accept: ACCEPT }); }
     catch (e) { if (e.code !== 'cancelled') toast(t('pickFail', e.message)); return; }
-    game.rom = relFromBundle(file.path, r.path);
+    // inside the workspace the host answers workspace-relative → stored bundle-relative, so the bundle stays portable;
+    // outside it the absolute path is stored as-is
+    game.rom = isAbs(r.path) ? r.path : relFromBundle(file.path, r.path);
     try { await writeGame(); } catch (e) { return toast(t('fsFail', e.message)); }
     // EmulatorJS can't swap games in place; a reload sends a fresh `ready`, and the host answers with a new `init`
     if (emu) location.reload();
@@ -411,8 +419,8 @@
   function vgLayout() {
     const b = (id, text, right, top, v) => ({ type: 'button', id, text, location: 'right', right, top, fontSize: 14, bold: true, input_value: v });
     const L = T[lang];
-    const pads = [b('x', L.lp, 145, 0, SF.LP), b('y', L.mp, 75, 0, SF.MP), b('z', L.hp, 5, 0, SF.HP),
-      b('a', L.lk, 145, 70, SF.LK), b('b', L.mk, 75, 70, SF.MK), b('c', L.hk, 5, 70, SF.HK)];
+    const pads = [b('x', '3', 145, 0, FIRE[2]), b('y', '4', 75, 0, FIRE[3]), b('z', '6', 5, 0, FIRE[5]),
+      b('a', '1', 145, 70, FIRE[0]), b('b', '2', 75, 70, FIRE[1]), b('c', '5', 5, 70, FIRE[4])];
     return [
       ...pads,
       { type: 'button', id: 'mode', text: L.vCoin, location: 'center', left: 0, fontSize: 13, block: true, input_value: R.SELECT },
@@ -422,7 +430,6 @@
   function relabelTouch() {
     const L = T[lang];
     const set = (cls, s) => { const el = document.querySelector(`.ejs_virtualGamepad_button.b_${cls}`); if (el) el.textContent = s; };
-    set('x', L.lp); set('y', L.mp); set('z', L.hp); set('a', L.lk); set('b', L.mk); set('c', L.hk);
     set('mode', L.vCoin); set('start', L.vStart);
   }
   $('vPause').addEventListener('touchstart', (e) => { e.preventDefault(); togglePause(); });
@@ -473,16 +480,14 @@
   // ── help ──────────────────────────────────────────────────────────────
   function keymap() {
     const L = T[lang], x = (k) => `<kbd>${k}</kbd>`;
-    const btn = (k, name, id) => `<span class="key">${x(k)}<small>${name} (${FIRE[id]})</small></span>`;
-    const arrow = (k, a) => `<span class="key">${x(k)}<small>${a}</small></span>`;
+    const key = (k, a) => `<span class="key">${x(k)}<small>${a}</small></span>`;
     const diagram = `<div class="diagram">
-      <div class="wasd"><span></span>${arrow('W', '↑')}<span></span>${arrow('A', '←')}${arrow('S', '↓')}${arrow('D', '→')}</div>
-      <div class="six">${btn('U', L.lp, SF.LP) + btn('I', L.mp, SF.MP) + btn('O', L.hp, SF.HP) + btn('J', L.lk, SF.LK) + btn('K', L.mk, SF.MK) + btn('L', L.hk, SF.HK)}</div></div>`;
-    const row = (name, id, k, g) => [`${name} · ${L.btn(FIRE[id])}`, k, g];
+      <div class="wasd"><span></span>${key('W', '↑')}<span></span>${key('A', '←')}${key('S', '↓')}${key('D', '→')}</div>
+      <div class="six">${key('U', L.btn(3)) + key('I', L.btn(4)) + key('O', L.btn(6)) + key('J', L.btn(1)) + key('K', L.btn(2)) + key('L', L.btn(5))}</div></div>`;
     const rows = [
       [L.dir, 'W A S D', L.dpad],
-      row(L.lp, SF.LP, 'U', 'X'), row(L.mp, SF.MP, 'I', 'Y'), row(L.hp, SF.HP, 'O', 'RB'),
-      row(L.lk, SF.LK, 'J', 'A'), row(L.mk, SF.MK, 'K', 'B'), row(L.hk, SF.HK, 'L', 'RT'),
+      [L.btn(1), 'J', 'A'], [L.btn(2), 'K', 'B'], [L.btn(3), 'U', 'X'],
+      [L.btn(4), 'I', 'Y'], [L.btn(5), 'L', 'RT'], [L.btn(6), 'O', 'RB'],
       [L.startK, 'Enter', 'Start'], [L.coin, 'Space', 'Back / Select'], [L.pauseK, 'P', 'LB'],
       [L.qsave, 'F2', L.none], [L.qload, 'F4', L.none], [L.mute, 'M', L.none], [L.fullK, L.fullHow, L.none],
     ];
