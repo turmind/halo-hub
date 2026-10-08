@@ -1,0 +1,12 @@
+{
+  "id": "arcade",
+  "name": "Arcade Emulator (FBNeo)",
+  "version": "1.0.0",
+  "description": "Play arcade romsets supported by FinalBurn Neo (the .zip named after the romset, e.g. gridlee.zip) with EmulatorJS, fully offline. Keyboard, gamepad and touch controls; ROMs not included.",
+  "extensions": [".zip"],
+  "entry": "index.html",
+  "priority": "default",
+  "capabilities": [],
+  "homepage": "https://github.com/turmind/halo-hub/tree/main/extensions/arcade",
+  "license": "MIT"
+}

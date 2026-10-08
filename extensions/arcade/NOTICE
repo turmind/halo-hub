@@ -1,0 +1,34 @@
+halo-hub / extensions/arcade
+Copyright (c) 2026 turmind — MIT (see LICENSE). That covers only index.html, app.js, style.css,
+halo-extension.json, fetch-deps.sh, emulatorjs-offline.patch and the docs in this directory.
+
+The release zip additionally ships emulatorjs/ — files taken from two npm packages (sha256-pinned in
+fetch-deps.sh). No ROM images, BIOS files or other copyrighted game data are included.
+
+--------------------------------------------------------------------------------
+EmulatorJS 4.2.3        (emulatorjs/src, emulatorjs/compression, emulatorjs/localization,
+                         emulatorjs/emulator.css)
+  npm @emulatorjs/emulatorjs@4.2.3   https://github.com/EmulatorJS/EmulatorJS
+  tarball sha256 8033a18a3398cae5efd7a4c12a633b10672435977290959633d671365b589639
+  Copyright (c) EmulatorJS contributors
+  License: GPL-3.0 (full text: emulatorjs/LICENSE). The shipped .js files are the unminified sources.
+  Modified: emulatorjs/src/emulator.js, by emulatorjs-offline.patch (next to this file, also inside the
+  zip): the update check against cdn.emulatorjs.org and the CDN download of a missing core are removed.
+  Because this page runs EmulatorJS, the extension as a whole is distributed under GPL-3.0 terms; the
+  MIT glue above is GPL-compatible.
+
+RetroArch (Emscripten frontend, EmulatorJS fork)
+  License: GPL-3.0   https://github.com/libretro/RetroArch   (fork: https://github.com/EmulatorJS/RetroArch)
+  Compiled into the core file below together with FinalBurn Neo.
+
+FinalBurn Neo (EmulatorJS build 2.0.2, libretro core)
+                        (emulatorjs/cores/fbneo-legacy-wasm.data — a 7z archive holding the compiled core,
+                         core.json, build.json and license.txt)
+  npm @emulatorjs/core-fbneo@4.2.3   https://github.com/EmulatorJS/FBNeo (upstream https://github.com/finalburnneo/FBNeo,
+  https://neo-source.com)
+  tarball sha256 1b7a35a2123d66f30b58650b6de4fff5e115673aab3eabe23a207aa7c547da32
+  Unmodified. License: the FinalBurn Neo license, included VERBATIM as LICENSE-FBNEO.txt next to this file
+  (identical to license.txt inside the .data archive). In short: no selling, leasing, renting or any other
+  monetary profit from FB Neo; source changes must be made public; this licence text must be included in
+  full; no distribution with ROM images without the legal right; no asking for donations. FB Neo contains
+  MAME code and is therefore also subject to the MAME license referenced in LICENSE-FBNEO.txt.
