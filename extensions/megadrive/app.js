@@ -1,9 +1,10 @@
 'use strict';
 // Halo canvas extension "megadrive": Sega Mega Drive / Genesis (+ Master System / Game Gear) on EmulatorJS 4.2.3 with
 // the Genesis Plus GX core, fully offline. Opens a `.mega` bundle (a directory) holding game.json — which ROM, which
-// display filter — and saves/<rom>.state. The ROM stays wherever it is in the workspace: picked with the host's file
-// picker and read in place every time (`fs` scope 'workspace', capability workspace-read); nothing but game.json and
-// saves/ is ever written into the bundle. Halo protocol v1: ready → init (bundle) → fs / pick; theme / lang live.
+// display filter — and saves/<rom>.state. The ROM stays wherever it is on the machine: picked with the host's file
+// picker and read in place every time (capability fs-read; `fs` scope 'workspace' for a ROM in the workspace,
+// 'system' for an absolute path outside it); nothing but game.json and saves/ is ever written into the bundle.
+// Halo protocol v1: ready → init (bundle) → fs / pick; theme / lang live.
 //
 // EmulatorJS owns the core, archive extraction, canvas, audio and the touch buttons. Keyboard, physical gamepad, the
 // touch stick, pause and save states are ours (EmulatorJS's input handlers are switched off in boot()): EmulatorJS
@@ -31,14 +32,14 @@
       saved: '已存档（F4 读档）', loaded: '已读档', noSave: '还没有存档 — 先按 F2', saveFail: '存档失败', loadFail: '读档失败',
       fsFail: (e) => `写入失败：${e}`, pickFail: (e) => `打不开文件选择：${e}`,
       kb: '键盘（1P）', gp: '手柄', act: '动作',
-      dir: '方向', lp: '轻拳', mp: '中拳', hp: '重拳', lk: '轻脚', mk: '中脚', hk: '重脚', b1: '按键 1', b2: '按键 2',
+      dir: '方向', btn: (n) => `按键 ${n}`,
       startK: '开始', coin: '投币 / Mode', coinMS: '投币（无作用）', pauseK: '暂停 / 继续', qsave: '快速存档', qload: '快速读档', mute: '静音', fullK: '全屏',
       dpad: '十字键 / 左摇杆', fullHow: '工具栏按钮 / 双击画面', none: '—',
       notes: [
         '快速存档（F2 / F4）保存在这个 .mega 目录的 saves/ 里，跟着工作区走；游戏内的电池存档仍只在本浏览器里。',
-        'ROM 不会复制进这个目录，game.json 只记下它的相对位置；ROM 挪了地方就点「换一个 ROM」重新选。',
+        'ROM 不会复制进这个目录，game.json 只记下它的位置（在工作区里记相对位置，在工作区外记绝对路径）；ROM 挪了地方就点「换一个 ROM」重新选。',
         '在 Halo 里放大画布时，Esc 用于退出放大。',
-        '触屏设备上：左半屏任意位置按下就出现摇杆（八个方向），右边是拳脚按钮；用了键盘或手柄就自动隐藏，再摸一下屏幕又会出现。工具栏「虚拟手柄」可切换 自动 / 开 / 关。',
+        '触屏设备上：左半屏任意位置按下就出现摇杆（八个方向），右边是动作按钮；用了键盘或手柄就自动隐藏，再摸一下屏幕又会出现。工具栏「虚拟手柄」可切换 自动 / 开 / 关。',
         '蓝牙手柄连上后要先按一下任意键，浏览器才会识别。',
       ],
       lic: 'EmulatorJS 4.2.3（GPL-3.0）+ Genesis Plus GX（仅限非商业用途）· 不含任何游戏 ROM',
@@ -59,14 +60,14 @@
       saved: 'State saved (F4 to load)', loaded: 'State loaded', noSave: 'No saved state yet — press F2 first', saveFail: 'Save failed', loadFail: 'Load failed',
       fsFail: (e) => `Could not write: ${e}`, pickFail: (e) => `Could not open the file picker: ${e}`,
       kb: 'Keyboard (1P)', gp: 'Gamepad', act: 'Action',
-      dir: 'Move', lp: 'Light punch', mp: 'Medium punch', hp: 'Heavy punch', lk: 'Light kick', mk: 'Medium kick', hk: 'Heavy kick', b1: 'Button 1', b2: 'Button 2',
+      dir: 'Move', btn: (n) => `Button ${n}`,
       startK: 'Start', coin: 'Coin / Mode', coinMS: 'Coin (unused)', pauseK: 'Pause / resume', qsave: 'Quick save', qload: 'Quick load', mute: 'Mute', fullK: 'Fullscreen',
       dpad: 'D-pad / left stick', fullHow: 'toolbar button / double-click the game', none: '—',
       notes: [
         'Quick saves (F2 / F4) go to saves/ inside this .mega folder and travel with the workspace; in-game battery saves stay in this browser.',
-        'The ROM is never copied into this folder — game.json only stores where it is. If you move the ROM, pick it again with “Change ROM”.',
+        'The ROM is never copied into this folder — game.json only stores where it is (relative to this folder inside the workspace, an absolute path outside it). If you move the ROM, pick it again with “Change ROM”.',
         'When the Halo canvas is maximized, Esc exits the maximized view.',
-        'Touch screens: press anywhere in the left half for a stick (8 directions); punch / kick buttons are on the right. They hide when you use a keyboard or gamepad and come back on the next touch. The “Touch controls” toolbar button cycles Auto / On / Off.',
+        'Touch screens: press anywhere in the left half for a stick (8 directions); the action buttons are on the right. They hide when you use a keyboard or gamepad and come back on the next touch. The “Touch controls” toolbar button cycles Auto / On / Off.',
         'A Bluetooth gamepad shows up only after you press one of its buttons.',
       ],
       lic: 'EmulatorJS 4.2.3 (GPL-3.0) + Genesis Plus GX (non-commercial use only) · no game ROMs included',
@@ -128,9 +129,13 @@
   const fsCall = (op, path, extra = {}) => request({ type: 'fs', op, path, ...extra }, extra.buffer ? [extra.buffer] : []);
   const enc = (s) => new TextEncoder().encode(s).buffer;
 
-  /** `rel` (POSIX, relative to the bundle dir, may climb with ../) → workspace path; null if absolute or above the root. */
+  /** Absolute = outside the workspace: POSIX `/…` or Windows `C:/…` (the host always sends forward slashes). */
+  const isAbs = (p) => p.startsWith('/') || /^[A-Za-z]:\//.test(p);
+  /** game.json `rom` → where to read it: an absolute path as-is with scope 'system'; else POSIX relative to the
+   *  bundle dir (may climb with ../) → a workspace path, scope 'workspace'. null if empty or above the root. */
   function resolveRom(dir, rel) {
-    if (typeof rel !== 'string' || !rel || rel.startsWith('/')) return null;
+    if (typeof rel !== 'string' || !rel) return null;
+    if (isAbs(rel)) return { path: rel, scope: 'system' };
     const out = dir.split('/').filter(Boolean);
     for (const seg of rel.split('/')) {
       if (seg === '' || seg === '.') continue;
@@ -138,7 +143,7 @@
       else if (!out.length) return null;
       else out.pop();
     }
-    return out.length ? out.join('/') : null;
+    return out.length ? { path: out.join('/'), scope: 'workspace' } : null;
   }
   /** workspace path → relative to the bundle dir (inside it: "sf2.zip"; elsewhere: "../roms/sf2.zip"). */
   function relFromBundle(dir, target) {
@@ -220,12 +225,13 @@
     catch (e) { if (e.code !== 'not-found') console.warn('[megadrive] game.json', e); game = { version: 1 }; }
     renderShader();
     if (typeof game.rom !== 'string' || !game.rom) return show('choose');
-    romPath = resolveRom(file.path, game.rom);
+    const loc = resolveRom(file.path, game.rom);
+    romPath = loc?.path ?? null;
     readError = null;
     let buf;
     try {
-      if (!romPath) return show('missing');
-      buf = (await fsCall('read', romPath, { scope: 'workspace' })).buffer;
+      if (!loc) return show('missing');
+      buf = (await fsCall('read', loc.path, { scope: loc.scope })).buffer;
     } catch (e) {
       if (e.code !== 'not-found' && e.code !== 'invalid-path') readError = e.message;
       return show('missing');
@@ -248,7 +254,9 @@
     let r;
     try { r = await request({ type: 'pick', accept: ACCEPT }); }
     catch (e) { if (e.code !== 'cancelled') toast(t('pickFail', e.message)); return; }
-    game.rom = relFromBundle(file.path, r.path);
+    // inside the workspace the host answers workspace-relative → stored bundle-relative, so the bundle stays portable;
+    // outside it the absolute path is stored as-is
+    game.rom = isAbs(r.path) ? r.path : relFromBundle(file.path, r.path);
     try { await writeGame(); } catch (e) { return toast(t('fsFail', e.message)); }
     // EmulatorJS can't swap games in place; a reload sends a fresh `ready`, and the host answers with a new `init`
     if (emu) location.reload();
@@ -415,8 +423,8 @@
     const b = (id, text, right, top, v) => ({ type: 'button', id, text, location: 'right', right, top, fontSize: 14, bold: true, input_value: v });
     const L = T[lang];
     const pads = sys.six
-      ? [b('x', L.lp, 145, 0, MD.X), b('y', L.mp, 75, 0, MD.Y), b('z', L.hp, 5, 0, MD.Z),
-        b('a', L.lk, 145, 70, MD.A), b('b', L.mk, 75, 70, MD.B), b('c', L.hk, 5, 70, MD.C)]
+      ? [b('x', 'X', 145, 0, MD.X), b('y', 'Y', 75, 0, MD.Y), b('z', 'Z', 5, 0, MD.Z),
+        b('a', 'A', 145, 70, MD.A), b('b', 'B', 75, 70, MD.B), b('c', 'C', 5, 70, MD.C)]
       : [b('b1', '1', 75, 70, R.B), b('b2', '2', 5, 70, R.A)];
     return [
       ...pads,
@@ -427,7 +435,6 @@
   function relabelTouch() {
     const L = T[lang];
     const set = (cls, s) => { const el = document.querySelector(`.ejs_virtualGamepad_button.b_${cls}`); if (el) el.textContent = s; };
-    if (sys?.six) { set('x', L.lp); set('y', L.mp); set('z', L.hp); set('a', L.lk); set('b', L.mk); set('c', L.hk); }
     set('mode', L.vCoin); set('start', L.vStart);
   }
   $('vPause').addEventListener('touchstart', (e) => { e.preventDefault(); togglePause(); });
@@ -479,18 +486,18 @@
   function keymap() {
     const L = T[lang], x = (k) => `<kbd>${k}</kbd>`;
     const six = !sys || sys.six;
-    const btn = (k, name, letter) => `<span class="key">${x(k)}<small>${name}${letter ? ` (${letter})` : ''}</small></span>`;
+    const btn = (k, name) => `<span class="key">${x(k)}<small>${name}</small></span>`;
     const diagram = `<div class="diagram">
       <div class="wasd"><span></span>${btn('W', '↑')}<span></span>${btn('A', '←')}${btn('S', '↓')}${btn('D', '→')}</div>
       <div class="six">${six
-        ? btn('U', L.lp, 'X') + btn('I', L.mp, 'Y') + btn('O', L.hp, 'Z') + btn('J', L.lk, 'A') + btn('K', L.mk, 'B') + btn('L', L.hk, 'C')
-        : btn('J', L.b1) + btn('K', L.b2)}</div></div>`;
+        ? btn('U', 'X') + btn('I', 'Y') + btn('O', 'Z') + btn('J', 'A') + btn('K', 'B') + btn('L', 'C')
+        : btn('J', '1') + btn('K', '2')}</div></div>`;
     const rows = [
       [L.dir, 'W A S D', L.dpad],
       ...(six
-        ? [[`${L.lp} (X)`, 'U', 'X'], [`${L.mp} (Y)`, 'I', 'Y'], [`${L.hp} (Z)`, 'O', 'RB'],
-          [`${L.lk} (A)`, 'J', 'A'], [`${L.mk} (B)`, 'K', 'B'], [`${L.hk} (C)`, 'L', 'RT']]
-        : [[L.b1, 'J', 'A'], [L.b2, 'K', 'B']]),
+        ? [[L.btn('X'), 'U', 'X'], [L.btn('Y'), 'I', 'Y'], [L.btn('Z'), 'O', 'RB'],
+          [L.btn('A'), 'J', 'A'], [L.btn('B'), 'K', 'B'], [L.btn('C'), 'L', 'RT']]
+        : [[L.btn(1), 'J', 'A'], [L.btn(2), 'K', 'B']]),
       [L.startK, 'Enter', 'Start'], [six ? L.coin : L.coinMS, 'Space', 'Back / Select'], [L.pauseK, 'P', 'LB'],
       [L.qsave, 'F2', L.none], [L.qload, 'F4', L.none], [L.mute, 'M', L.none], [L.fullK, L.fullHow, L.none],
     ];
