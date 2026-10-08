@@ -2,11 +2,12 @@
   "id": "megadrive",
   "name": "Mega Drive / Genesis Emulator",
   "version": "1.0.0",
-  "description": "Play Sega Mega Drive / Genesis ROMs (also Master System / Game Gear) with EmulatorJS + Genesis Plus GX, fully offline. Keyboard, gamepad and touch controls; ROMs not included.",
-  "extensions": [".zip", ".gen", ".smd", ".sms", ".gg"],
+  "description": "Mega Drive / Genesis (+ Master System / Game Gear) in a .mega folder: pick a workspace ROM (.zip .7z .md .gen …), play offline with keyboard, gamepad or touch. No ROMs included.",
+  "extensions": [".mega"],
   "entry": "index.html",
   "priority": "default",
-  "capabilities": [],
+  "bundle": true,
+  "capabilities": ["workspace-read"],
   "homepage": "https://github.com/turmind/halo-hub/tree/main/extensions/megadrive",
   "license": "MIT"
 }
