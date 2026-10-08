@@ -1,0 +1,25 @@
+--- a/src/emulator.js
++++ b/src/emulator.js
+@@ -204,7 +204,7 @@
+         this.extensions = [];
+         this.initControlVars();
+         this.debug = (window.EJS_DEBUG_XX === true);
+-        if (this.debug || (window.location && ["localhost", "127.0.0.1"].includes(location.hostname))) this.checkForUpdates();
++        // halo-hub: offline bundle — no update check against cdn.emulatorjs.org
+         this.netplayEnabled = (window.EJS_DEBUG_XX === true) && (window.EJS_EXPERIMENTAL_NETPLAY === true);
+         this.config = config;
+         this.config.buttonOpts = this.buildButtonOptions(this.config.buttonOpts);
+@@ -613,12 +613,7 @@
+                 this.textElem.innerText = this.localization("Download Game Core") + progress;
+             }, false, { responseType: "arraybuffer", method: "GET" });
+             if (res === -1) {
+-                console.log("File not found, attemping to fetch from emulatorjs cdn.");
+-                console.error("**THIS METHOD IS A FAILSAFE, AND NOT OFFICIALLY SUPPORTED. USE AT YOUR OWN RISK**");
+-                let version = this.ejs_version.endsWith("-beta") ? "nightly" : this.ejs_version;
+-                res = await this.downloadFile(`https://cdn.emulatorjs.org/${version}/data/${corePath}`, (progress) => {
+-                    this.textElem.innerText = this.localization("Download Game Core") + progress;
+-                }, true, { responseType: "arraybuffer", method: "GET" });
++                // halo-hub: offline bundle — a missing core is an error, never a cdn.emulatorjs.org download
+                 if (res === -1) {
+                     if (!this.supportsWebgl2) {
+                         this.startGameError(this.localization("Outdated graphics driver"));

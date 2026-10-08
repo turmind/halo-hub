@@ -1,0 +1,95 @@
+/* Chrome uses the admin palette (--h-* from init / theme frames, fallbacks = a dark theme); the game surface stays black. */
+:root {
+  --h-background: #1a1b26; --h-foreground: #c0caf5; --h-card: #1f2335; --h-card-foreground: #c0caf5;
+  --h-border: #2f3549; --h-muted: #24283b; --h-muted-foreground: #8089b3;
+  --h-primary: #7aa2f7; --h-primary-foreground: #1a1b26; --h-secondary: #2a2f45; --h-secondary-foreground: #c0caf5;
+  color-scheme: dark;
+}
+:root[data-theme='light'] {
+  --h-background: #fafafa; --h-foreground: #1f2328; --h-card: #ffffff; --h-card-foreground: #1f2328;
+  --h-border: #d8dee4; --h-muted: #f0f2f5; --h-muted-foreground: #59636e;
+  --h-primary: #2f6feb; --h-primary-foreground: #ffffff; --h-secondary: #eaeef2; --h-secondary-foreground: #1f2328;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { background: var(--h-background); color: var(--h-foreground); font: 13px/1.5 system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+#app { display: flex; flex-direction: column; height: 100%; }
+[hidden] { display: none !important; }
+
+/* ── toolbar ── */
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 8px; border-bottom: 1px solid var(--h-border); background: var(--h-card); color: var(--h-card-foreground); flex: none; min-height: 36px; }
+.bar .grow { flex: 1; }
+.bar button { flex: none; font: inherit; font-size: 12px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--h-border); background: var(--h-secondary); color: var(--h-secondary-foreground); cursor: pointer; white-space: nowrap; }
+.bar button:hover:not(:disabled) { border-color: var(--h-primary); }
+.bar button:disabled { opacity: .45; cursor: default; }
+.bar button.icon { padding: 3px 6px; }
+.bar input[type='range'] { width: 72px; flex: none; accent-color: var(--h-primary); }
+.sys { font-weight: 600; white-space: nowrap; }
+.chip { font-size: 11px; padding: 1px 8px; border-radius: 99px; background: var(--h-muted); color: var(--h-muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40ch; }
+.chip.on { background: color-mix(in srgb, var(--h-primary) 22%, transparent); color: var(--h-foreground); }
+
+/* ── stage ── */
+#stage { position: relative; flex: 1; min-height: 0; background: #000; outline: none; }
+#stage:fullscreen { width: 100vw; height: 100vh; }
+#game { position: absolute; inset: 0; }
+/* the host owns the iframe's corners: no EmulatorJS menu toggle, and status messages go bottom-centre, not top */
+.ejs_virtualGamepad_open, .ejs_menu_bar { display: none !important; }
+.ejs_message { top: auto !important; bottom: 12px; left: 50%; transform: translateX(-50%); color: #fff !important; background: rgba(0,0,0,.6); border-radius: 6px; padding: 4px 10px !important; font-size: 13px !important; pointer-events: none; }
+
+.panel { position: absolute; inset: 0; overflow: auto; padding: 16px; background: color-mix(in srgb, var(--h-background) 94%, transparent); z-index: 20; }
+.panel.center { display: flex; align-items: flex-start; justify-content: center; }
+.card { position: relative; margin: auto; max-width: 720px; width: 100%; padding: 18px 20px; border: 1px solid var(--h-border); border-radius: 10px; background: var(--h-card); color: var(--h-card-foreground); }
+.card h2 { margin: 0 0 10px; font-size: 16px; }
+.card p { margin: 6px 0; }
+.muted { color: var(--h-muted-foreground); }
+.close { position: absolute; top: 8px; right: 10px; border: 0; background: none; color: var(--h-muted-foreground); font-size: 20px; cursor: pointer; line-height: 1; }
+.fname { font-size: 15px; font-weight: 600; word-break: break-all; text-align: center; }
+.sysbig { color: var(--h-muted-foreground); text-align: center; margin-bottom: 12px; }
+button.big { display: block; margin: 0 auto 4px; font: inherit; font-size: 15px; font-weight: 600; padding: 10px 28px; border-radius: 8px; border: 0; background: var(--h-primary); color: var(--h-primary-foreground); cursor: pointer; }
+.entries { margin: 10px 0 0; padding: 8px 10px; list-style: none; max-height: 50vh; overflow: auto; border: 1px solid var(--h-border); border-radius: 6px; background: var(--h-muted); font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.entries .head { font: 600 12px/1.6 system-ui, sans-serif; color: var(--h-muted-foreground); margin-bottom: 4px; }
+
+/* ── key map ── */
+.diagram { display: flex; justify-content: center; gap: 36px; margin: 14px 0; flex-wrap: wrap; }
+.wasd, .six { display: grid; grid-template-columns: repeat(3, 64px); gap: 6px; }
+.key { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.key small { font-size: 11px; color: var(--h-muted-foreground); white-space: nowrap; }
+kbd { display: inline-block; min-width: 26px; padding: 2px 6px; border: 1px solid var(--h-border); border-bottom-width: 2px; border-radius: 5px; background: var(--h-secondary); color: var(--h-secondary-foreground); font: 600 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; text-align: center; }
+.diagram kbd { min-width: 36px; padding: 6px 0; font-size: 14px; }
+table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--h-border); }
+th { color: var(--h-muted-foreground); font-weight: 600; }
+.notes { margin: 12px 0 0; padding-left: 18px; color: var(--h-muted-foreground); font-size: 12px; }
+.notes li { margin: 3px 0; }
+.lic { margin-top: 10px !important; font-size: 11px; color: var(--h-muted-foreground); }
+#start .card { max-width: 640px; }
+#startHelp { margin-top: 12px; }
+
+/* ── pause / toast ── */
+.paused { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); z-index: 15; cursor: pointer; }
+.paused span { padding: 8px 16px; border-radius: 8px; background: rgba(0,0,0,.75); color: #fff; font-size: 14px; }
+.toast { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 30; padding: 6px 14px; border-radius: 8px; background: rgba(0,0,0,.8); color: #fff; font-size: 13px; pointer-events: none; }
+
+/* ── touch controls: EmulatorJS's virtual gamepad, restyled ──
+   Translucent (≈40%) so the game shows through, pinned to the bottom corners, nothing in the top 56px (the host's
+   maximize control and reply toast). touch-action: none only on the controls, so the rest of the page scrolls/zooms
+   normally; each button handles its own touches, so pressing several at once works. */
+.ejs_virtualGamepad_parent { bottom: 0 !important; top: 56px; height: auto; pointer-events: none; z-index: 10; display: none !important; }
+#stage.vg-on .ejs_virtualGamepad_parent { display: block !important; opacity: 1 !important; }
+.ejs_virtualGamepad_left, .ejs_virtualGamepad_right, .ejs_virtualGamepad_bottom, .ejs_virtualGamepad_top { pointer-events: auto; touch-action: none; opacity: .4; }
+.ejs_virtualGamepad_top { display: none; }
+.ejs_virtualGamepad_left { left: max(14px, env(safe-area-inset-left)) !important; bottom: 18px !important; width: 140px !important; height: 140px !important; }
+.ejs_virtualGamepad_right { right: max(14px, env(safe-area-inset-right)) !important; bottom: 18px !important; width: 205px !important; height: 130px !important; }
+.ejs_virtualGamepad_bottom { bottom: 8px !important; width: 188px !important; margin-left: -94px !important; height: 34px !important; }
+/* dark fill + white text / border: readable over bright and dark parts of the picture alike */
+.ejs_virtualGamepad_button { width: 58px !important; height: 58px !important; line-height: 56px !important; color: #fff; border: 2px solid #fff !important; background-color: rgba(0,0,0,.55); font-size: 14px !important; white-space: nowrap; }
+.ejs_virtualGamepad_bottom .ejs_virtualGamepad_button { width: 60px !important; height: 30px !important; line-height: 26px !important; font-size: 13px !important; }
+.ejs_virtualGamepad_button_down { background-color: rgba(255,255,255,.7) !important; color: #000; }
+.ejs_dpad_main { opacity: 1 !important; }
+.vpause { position: absolute; left: 128px; top: 0; width: 60px; height: 30px; padding: 0; font: 13px/26px system-ui, sans-serif; color: #fff; background: rgba(0,0,0,.55); border: 2px solid #fff; border-radius: 5px; touch-action: none; }
+/* short landscape phones: smaller pads so the 2×3 grid and the d-pad leave the picture in the middle */
+@media (max-height: 420px) {
+  .ejs_virtualGamepad_left { width: 120px !important; height: 120px !important; bottom: 10px !important; }
+  .ejs_virtualGamepad_right { transform: scale(.88); transform-origin: bottom right; bottom: 10px !important; }
+}

@@ -1,0 +1,34 @@
+halo-hub / extensions/megadrive
+Copyright (c) 2026 turmind — MIT (see LICENSE). That covers only index.html, app.js, style.css,
+halo-extension.json, fetch-deps.sh, emulatorjs-offline.patch and the docs in this directory.
+
+The release zip additionally ships emulatorjs/ — files taken from two npm packages (sha256-pinned in
+fetch-deps.sh). No game ROMs, BIOS files or other copyrighted game data are included.
+
+--------------------------------------------------------------------------------
+EmulatorJS 4.2.3        (emulatorjs/src, emulatorjs/compression, emulatorjs/localization,
+                         emulatorjs/emulator.css)
+  npm @emulatorjs/emulatorjs@4.2.3   https://github.com/EmulatorJS/EmulatorJS
+  tarball sha256 8033a18a3398cae5efd7a4c12a633b10672435977290959633d671365b589639
+  Copyright (c) EmulatorJS contributors
+  License: GPL-3.0 (full text: emulatorjs/LICENSE). The shipped .js files are the unminified sources.
+  Modified: emulatorjs/src/emulator.js, by emulatorjs-offline.patch (next to this file, also inside the
+  zip): the update check against cdn.emulatorjs.org and the CDN download of a missing core are removed.
+  Because this page runs EmulatorJS, the extension as a whole is distributed under GPL-3.0 terms; the
+  MIT glue above is GPL-compatible.
+
+Genesis Plus GX (EmulatorJS build 2.0.2, libretro core) + RetroArch (Emscripten frontend)
+                        (emulatorjs/cores/genesis_plus_gx-legacy-wasm.data — a 7z archive holding the
+                         compiled core, core.json, build.json and license.txt)
+  npm @emulatorjs/core-genesis_plus_gx@4.2.3   https://github.com/EmulatorJS/Genesis-Plus-GX
+  tarball sha256 3f4ac27829f3a86734cb1b27f62078a1f1413f08cb0bb7e421b95aec31a0dfa3
+  Unmodified. Genesis Plus GX:
+    Copyright (c) 1998-2003 Charles MacDonald
+    Copyright (c) 2007-2023 Eke-Eke
+    Some portions copyright Nicola Salmoria and the MAME team
+  License: the Genesis Plus GX license — NON-COMMERCIAL: redistributions may not be sold, nor may they be
+  used in a commercial product or activity. Full text, including the third-party components compiled into
+  the core (Nuked OPN2 — LGPL-2.1, Tremor, libchdr, LZMA, zlib, …): LICENSE-GENESIS-PLUS-GX.txt next to
+  this file (identical to license.txt inside the .data archive).
+  Source code: https://github.com/EmulatorJS/Genesis-Plus-GX (upstream https://github.com/ekeeke/Genesis-Plus-GX)
+  RetroArch: GPL-3.0, https://github.com/libretro/RetroArch (EmulatorJS fork: https://github.com/EmulatorJS/RetroArch)

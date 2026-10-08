@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Same origin as the admin (sandbox allow-same-origin), so the page carries its own CSP: nothing remote can load or
+     connect. EmulatorJS needs blob: for the core script / wasm / unzip worker, 'wasm-unsafe-eval' to compile the core,
+     'unsafe-eval' for its prebuilt asm.js zip / 7z extractors (emscripten cwrap calls eval; the blob: workers inherit
+     this policy), and inline style attributes for its own DOM. Script sources stay 'self' + blob:. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'unsafe-eval' 'wasm-unsafe-eval'; worker-src blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' blob: data:; media-src blob:; base-uri 'none'; form-action 'none'">
+<title>Mega Drive / Genesis</title>
+<link rel="stylesheet" href="emulatorjs/emulator.css">
+<link rel="stylesheet" href="style.css">
+<div id="app">
+  <header id="bar" class="bar">
+    <span id="sys" class="sys"></span>
+    <span id="pad" class="chip"></span>
+    <span class="grow"></span>
+    <button id="bHelp" type="button" data-i="help"></button>
+    <button id="bPause" type="button" disabled></button>
+    <button id="bSave" type="button" disabled data-i="save"></button>
+    <button id="bLoad" type="button" disabled data-i="load"></button>
+    <button id="bMute" type="button" class="icon"></button>
+    <input id="vol" type="range" min="0" max="1" step="0.05" aria-label="volume">
+    <button id="bTouch" type="button"></button>
+    <button id="bFull" type="button" data-i="full"></button>
+  </header>
+  <main id="stage" tabindex="-1">
+    <div id="game"></div>
+    <section id="start" class="panel center" hidden>
+      <div class="card">
+        <div id="startName" class="fname"></div>
+        <div id="startSys" class="sysbig"></div>
+        <button id="bStart" type="button" class="big" data-i="start"></button>
+        <div id="startHelp"></div>
+      </div>
+    </section>
+    <section id="notrom" class="panel center" hidden>
+      <div class="card">
+        <h2 data-i="notRom"></h2>
+        <p data-i="notRomHint"></p>
+        <p class="muted" data-i="mdHint"></p>
+        <ul id="entries" class="entries"></ul>
+      </div>
+    </section>
+    <section id="help" class="panel" hidden>
+      <div class="card">
+        <button id="bHelpClose" type="button" class="close">×</button>
+        <div id="helpBody"></div>
+      </div>
+    </section>
+    <div id="paused" class="paused" hidden><span id="pausedText"></span></div>
+    <button id="vPause" type="button" class="vpause" hidden></button>
+    <div id="toast" class="toast" hidden></div>
+  </main>
+</div>
+<script src="app.js"></script>
