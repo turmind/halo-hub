@@ -7,6 +7,7 @@
 #                  npm @emulatorjs/core-fbneo (prebuilt RetroArch + FinalBurn Neo wasm), both sha256-pinned.
 #                  Only what an offline single-player arcade page loads is copied:
 #                    src/{emulator,storage,gamepad,GameManager,compression}.js, emulator.css
+#                    src/shaders.js                          the GLSL display filters (Display menu)
 #                    compression/{extractzip,extract7z}.js   un-7z the core (romset zips go to the core as-is)
 #                    localization/zh-CN.json                 Chinese UI (English is built in)
 #                    cores/fbneo-legacy-wasm.data            the variant EmulatorJS 4.2.3 picks: the core report has no
@@ -14,7 +15,7 @@
 #                                                            browser; "-thread" variants need COOP/COEP, which Halo doesn't send
 #                    cores/reports/fbneo.json                build stamp EmulatorJS reads before the core
 #                    LICENSE                                 GPL-3.0 text from the EmulatorJS package
-#                  Not copied: loader.js (app.js boots EmulatorJS itself), shaders.js, socket.io (netplay), libunrar,
+#                  Not copied: loader.js (app.js boots EmulatorJS itself), socket.io (netplay), libunrar,
 #                  nipplejs (only the virtual-gamepad "zone" type uses it; our layout has none).
 #                  Then emulatorjs-offline.patch is applied to src/emulator.js (see NOTICE): no update check, no CDN core fallback.
 # Bump the versions + sha256 together, then re-run the dev check in README.md.
@@ -44,7 +45,7 @@ rm -rf emulatorjs
 mkdir -p emulatorjs/src emulatorjs/compression emulatorjs/localization emulatorjs/cores/reports
 cp "$e/LICENSE" emulatorjs/LICENSE
 cp "$e/data/emulator.css" emulatorjs/
-for f in emulator storage gamepad GameManager compression; do cp "$e/data/src/$f.js" emulatorjs/src/; done
+for f in emulator storage gamepad GameManager compression shaders; do cp "$e/data/src/$f.js" emulatorjs/src/; done
 cp "$e/data/compression/extractzip.js" "$e/data/compression/extract7z.js" emulatorjs/compression/
 cp "$e/data/localization/zh-CN.json" emulatorjs/localization/
 c="$tmp/core-fbneo/package"

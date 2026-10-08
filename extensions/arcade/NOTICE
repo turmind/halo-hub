@@ -17,6 +17,20 @@ EmulatorJS 4.2.3        (emulatorjs/src, emulatorjs/compression, emulatorjs/loca
   Because this page runs EmulatorJS, the extension as a whole is distributed under GPL-3.0 terms; the
   MIT glue above is GPL-compatible.
 
+Display filters         (emulatorjs/src/shaders.js — part of the EmulatorJS 4.2.3 package above, unmodified)
+  GLSL ports of libretro shaders (https://github.com/libretro/glsl-shaders), base64-embedded. The page
+  passes three of them to EmulatorJS for 「画面」 / Display (the fourth option, Pixel, is no filter); the
+  rest of the file ships as-is, unused.
+    bicubic             Copyright (C) 2010 Team XBMC, (C) 2011 Stefanos A. — GPL-2.0-or-later (the
+                        embedded port omits the header; the libretro upstream carries it)
+    sabr                SABR v3.0, Joshua Street, portions from Hyllian's 5xBR v3.7c — GPL-2.0-or-later
+    crt-easymode        CRT Shader by EasyMode — "License: GPL"
+  Other presets in the file, not used by this page: 2xScaleHQ / 4xScaleHQ (guest(r), GPL-2.0-or-later),
+  crt-geom (cgwg, Themaister, DOLLS, GPL-2.0-or-later), crt-aperture (EasyMode, GPL), mix-frames
+  (GPL-2.0-or-later), crt-mattias, crt-beam, crt-caligari, crt-lottes, crt-zfast, crt-yeetron (no licence
+  header in the port; see the libretro glsl-shaders repository).
+  GPL-2.0-or-later is compatible with the GPL-3.0 terms the extension is distributed under.
+
 RetroArch (Emscripten frontend, EmulatorJS fork)
   License: GPL-3.0   https://github.com/libretro/RetroArch   (fork: https://github.com/EmulatorJS/RetroArch)
   Compiled into the core file below together with FinalBurn Neo.

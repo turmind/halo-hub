@@ -26,8 +26,8 @@ dist/               Build output — packaged zips, not committed
 | `excalidraw` | `.excalidraw` | ✓ | Offline Excalidraw whiteboard (~16 MB zip); release-zip install only |
 | `ipynb` | `.ipynb` | — | Jupyter notebook viewer (markdown, math, outputs) |
 | `htrans` | `.htrans` (folder) | ✓ | Meeting recorder: mic + system sound, live Amazon Transcribe captions, timed screenshots; needs the server's transcribe proxy + AWS credentials |
-| `megadrive` | `.zip` `.gen` `.smd` `.sms` `.gg` | — | Offline Mega Drive / Genesis (+ Master System / Game Gear) emulator, EmulatorJS + Genesis Plus GX (~1.5 MB zip); keyboard, gamepad, touch; non-commercial core license, no ROMs; release-zip install only |
-| `arcade` | `.zip` (romset) | — | Offline arcade emulator, EmulatorJS + FinalBurn Neo (~8.5 MB zip); unmodified romsets named after the set; keyboard, gamepad, touch; FBNeo licence forbids any commercial use, no ROMs; release-zip install only. Shares `.zip` with `megadrive`: the newest install opens zips, the other is in Open with |
+| `megadrive` | `.mega` (folder) | — | Offline Mega Drive / Genesis (+ Master System / Game Gear) emulator, EmulatorJS + Genesis Plus GX (~1.5 MB zip). The folder holds `game.json` (which workspace ROM — `.zip` `.7z` `.md` `.gen` `.smd` `.bin` `.sms` `.gg`, read in place, never copied — and the display filter) and `saves/`; keyboard, gamepad, touch stick; non-commercial core license, no ROMs; release-zip install only |
+| `arcade` | `.arcade` (folder) | — | Offline arcade emulator, EmulatorJS + FinalBurn Neo (~8.5 MB zip). The folder holds `game.json` (which workspace romset — an unmodified `.zip` named after the set, read in place, never copied — and the display filter) and `saves/`; keyboard, gamepad, touch stick; FBNeo licence forbids any commercial use, no ROMs; release-zip install only |
 
 **Models** (`models/<id>.yaml`, release tag `models-v<YYYY.MM.DD>`)
 

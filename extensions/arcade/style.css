@@ -25,6 +25,8 @@ body { background: var(--h-background); color: var(--h-foreground); font: 13px/1
 .bar button:disabled { opacity: .45; cursor: default; }
 .bar button.icon { padding: 3px 6px; }
 .bar input[type='range'] { width: 72px; flex: none; accent-color: var(--h-primary); }
+.bar .sel { display: flex; align-items: center; gap: 4px; flex: none; font-size: 12px; white-space: nowrap; }
+.bar select { font: inherit; font-size: 12px; padding: 2px 4px; border-radius: 6px; border: 1px solid var(--h-border); background: var(--h-secondary); color: var(--h-secondary-foreground); cursor: pointer; }
 .sys { font-weight: 600; white-space: nowrap; }
 .chip { font-size: 11px; padding: 1px 8px; border-radius: 99px; background: var(--h-muted); color: var(--h-muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40ch; }
 .chip.on { background: color-mix(in srgb, var(--h-primary) 22%, transparent); color: var(--h-foreground); }
@@ -46,6 +48,8 @@ body { background: var(--h-background); color: var(--h-foreground); font: 13px/1
 .close { position: absolute; top: 8px; right: 10px; border: 0; background: none; color: var(--h-muted-foreground); font-size: 20px; cursor: pointer; line-height: 1; }
 .fname { font-size: 15px; font-weight: 600; word-break: break-all; text-align: center; }
 .sysbig { color: var(--h-muted-foreground); text-align: center; margin-bottom: 12px; }
+.card.slim { max-width: 460px; text-align: center; }
+.hint { text-align: center; font-size: 12px; margin-bottom: 8px; }
 button.big { display: block; margin: 0 auto 4px; font: inherit; font-size: 15px; font-weight: 600; padding: 10px 28px; border-radius: 8px; border: 0; background: var(--h-primary); color: var(--h-primary-foreground); cursor: pointer; }
 .entries { margin: 10px 0 0; padding: 8px 10px; list-style: none; max-height: 50vh; overflow: auto; border: 1px solid var(--h-border); border-radius: 6px; background: var(--h-muted); font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .entries .head { font: 600 12px/1.6 system-ui, sans-serif; color: var(--h-muted-foreground); margin-bottom: 4px; }
@@ -79,17 +83,26 @@ th { color: var(--h-muted-foreground); font-weight: 600; }
 #stage.vg-on .ejs_virtualGamepad_parent { display: block !important; opacity: 1 !important; }
 .ejs_virtualGamepad_left, .ejs_virtualGamepad_right, .ejs_virtualGamepad_bottom, .ejs_virtualGamepad_top { pointer-events: auto; touch-action: none; opacity: .4; }
 .ejs_virtualGamepad_top { display: none; }
-.ejs_virtualGamepad_left { left: max(14px, env(safe-area-inset-left)) !important; bottom: 18px !important; width: 140px !important; height: 140px !important; }
+/* the left side is our floating stick (#stick), EmulatorJS's left container stays empty */
+.ejs_virtualGamepad_left { display: none !important; }
 .ejs_virtualGamepad_right { right: max(14px, env(safe-area-inset-right)) !important; bottom: 18px !important; width: 205px !important; height: 130px !important; }
 .ejs_virtualGamepad_bottom { bottom: 8px !important; width: 188px !important; margin-left: -94px !important; height: 34px !important; }
 /* dark fill + white text / border: readable over bright and dark parts of the picture alike */
 .ejs_virtualGamepad_button { width: 58px !important; height: 58px !important; line-height: 56px !important; color: #fff; border: 2px solid #fff !important; background-color: rgba(0,0,0,.55); font-size: 14px !important; white-space: nowrap; }
 .ejs_virtualGamepad_bottom .ejs_virtualGamepad_button { width: 60px !important; height: 30px !important; line-height: 26px !important; font-size: 13px !important; }
 .ejs_virtualGamepad_button_down { background-color: rgba(255,255,255,.7) !important; color: #000; }
-.ejs_dpad_main { opacity: 1 !important; }
 .vpause { position: absolute; left: 128px; top: 0; width: 60px; height: 30px; padding: 0; font: 13px/26px system-ui, sans-serif; color: #fff; background: rgba(0,0,0,.55); border: 2px solid #fff; border-radius: 5px; touch-action: none; }
 /* short landscape phones: smaller pads so the 2×3 grid and the d-pad leave the picture in the middle */
 @media (max-height: 420px) {
-  .ejs_virtualGamepad_left { width: 120px !important; height: 120px !important; bottom: 10px !important; }
   .ejs_virtualGamepad_right { transform: scale(.88); transform-origin: bottom right; bottom: 10px !important; }
 }
+
+/* ── floating stick: the left half of the game area below the top 56 px. A touch centres the base under the finger;
+   released, it glides back to its resting hint bottom-left. Under the EmulatorJS buttons (z 10), so coin / start /
+   pause at the bottom centre keep their touches. ── */
+.stick { position: absolute; left: 0; top: 56px; bottom: 0; width: 50%; z-index: 9; touch-action: none; display: none; }
+#stage.vg-on .stick { display: block; }
+.stick-base { position: absolute; left: max(84px, calc(env(safe-area-inset-left) + 70px)); top: calc(100% - 84px); width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 2px solid #fff; background: rgba(0,0,0,.55); opacity: .4; pointer-events: none; transition: left .25s ease, top .25s ease; }
+.stick.active .stick-base { transition: none; }
+.stick-knob { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; background: rgba(255,255,255,.7); border: 2px solid #fff; }
+@media (max-height: 420px) { .stick-base { left: max(70px, calc(env(safe-area-inset-left) + 60px)); top: calc(100% - 70px); } }
