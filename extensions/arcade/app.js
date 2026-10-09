@@ -34,6 +34,7 @@
       setHint: 'romset 的文件名必须是 MAME 短名（如 gridlee.zip、alienar.zip），压缩包里是原样的芯片文件；主机游戏 ROM 请用对应主机的扩展。',
       badZip: '读不出压缩包目录（不是 .zip，或文件已损坏）。', entries: (n) => `压缩包内容（${n} 项）`, more: (n) => `…还有 ${n} 项`,
       padOn: (n) => `🎮 已连接：${n}`, padOff: '未检测到手柄 — 连接后按任意键唤醒', padInsecure: '手柄需要 HTTPS 或 localhost 访问',
+      two: '👥 双人', twoChip: (a, b) => `1P ${a} · 2P ${b}`, twoKb: '⌨ 键盘', twoNone: '2P：连接手柄后按任意键',
       pausedBlur: '已暂停 — 点击画面继续', pausedUser: '已暂停 — 按 P（手柄 LB）或点击画面继续',
       saved: '已存档（F4 读档）', loaded: '已读档', noSave: '还没有存档 — 先按 F2', saveFail: '存档失败', loadFail: '读档失败',
       fsFail: (e) => `写入失败：${e}`, pickFail: (e) => `打不开文件选择：${e}`,
@@ -49,6 +50,7 @@
         '在 Halo 里放大画布时，Esc 用于退出放大。',
         '触屏设备上：左半屏任意位置按下就出现摇杆（八个方向），右边是动作按钮；用了键盘或手柄就自动隐藏，再摸一下屏幕又会出现。工具栏「虚拟手柄」可切换 自动 / 开 / 关。',
         '蓝牙手柄连上后要先按一下任意键，浏览器才会识别。',
+        '双人：工具栏点「👥 双人」打开（会记住）。只有一个手柄时，键盘是 1P、手柄是 2P；有两个手柄时，第一个是 1P、第二个是 2P，键盘也还是 1P。每个手柄的 Start / Select 只管自己那一方，哪个手柄按 LB 都是暂停；触屏始终是 1P。',
       ],
       lic: 'EmulatorJS 4.2.3（GPL-3.0）+ FinalBurn Neo（禁止任何营利用途）· 不含任何游戏 ROM',
       vStart: '开始', vCoin: '投币', vPause: '暂停',
@@ -70,6 +72,7 @@
       setHint: 'A romset’s file name must be the MAME short name (e.g. gridlee.zip, alienar.zip), holding the chip dumps as distributed; console ROMs need that console’s extension.',
       badZip: 'Could not read the archive directory (not a .zip, or the file is damaged).', entries: (n) => `Archive contents (${n})`, more: (n) => `…${n} more`,
       padOn: (n) => `🎮 Connected: ${n}`, padOff: 'No gamepad — press any button on it to wake it', padInsecure: 'Gamepads need HTTPS or localhost',
+      two: '👥 2 Players', twoChip: (a, b) => `1P ${a} · 2P ${b}`, twoKb: '⌨ Keyboard', twoNone: '2P: connect a gamepad and press a button',
       pausedBlur: 'Paused — click the game to continue', pausedUser: 'Paused — press P (pad LB) or click the game to continue',
       saved: 'State saved (F4 to load)', loaded: 'State loaded', noSave: 'No saved state yet — press F2 first', saveFail: 'Save failed', loadFail: 'Load failed',
       fsFail: (e) => `Could not write: ${e}`, pickFail: (e) => `Could not open the file picker: ${e}`,
@@ -85,6 +88,7 @@
         'When the Halo canvas is maximized, Esc exits the maximized view.',
         'Touch screens: press anywhere in the left half for a stick (8 directions); the action buttons are on the right. They hide when you use a keyboard or gamepad and come back on the next touch. The “Touch controls” toolbar button cycles Auto / On / Off.',
         'A Bluetooth gamepad shows up only after you press one of its buttons.',
+        'Two players: turn on “👥 2 Players” in the toolbar (remembered). With one gamepad the keyboard is 1P and the pad is 2P; with two gamepads the first is 1P and the second 2P, and the keyboard stays 1P. Each pad’s Start / Select works for its own player, LB on either pad pauses; touch is always 1P.',
       ],
       lic: 'EmulatorJS 4.2.3 (GPL-3.0) + FinalBurn Neo (no commercial use of any kind) · no game ROMs included',
       vStart: 'Start', vCoin: 'Coin', vPause: 'Pause',
@@ -242,22 +246,33 @@
   let extras = [], lacking = [];   // the BIOS / parent zips written next to the romset ({ name, bytes }); the missing ones
   let sys = null, emu = null, booting = false, started = false;
   const pauseWhy = new Set(); // 'user' | 'blur' | 'help'
-  const src = { kb: {}, pad: {}, touch: {} }, sent = {}; // per-source held RetroPad ids → what the core last got
+  // Held RetroPad ids per source → what the core last got, per player. Sources: kb, touch (always 1P), pad0 / pad1 (the
+  // first two connected pads, in navigator.getGamepads() order); padPlayer() says which player each pad drives.
+  const src = { kb: {}, touch: {}, pad0: {}, pad1: {} }, sent = [{}, {}];
   let audio = { volume: 0.5, muted: false };
   try { audio = { ...audio, ...JSON.parse(localStorage.getItem(LS + 'audio') || '{}') }; } catch {}
   let touchMode = ['auto', 'on', 'off'].includes(localStorage.getItem(LS + 'touch')) ? localStorage.getItem(LS + 'touch') : 'auto';
+  // 2 Players (toolbar 👥, default off): keyboard + touch = 1P; one pad = 2P; two pads = 1P + 2P (keyboard still 1P).
+  let twoP = localStorage.getItem(LS + 'two') === 'on';
   const touchCapable = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
   let lastInput = null; // 'kb' | 'pad' | 'touch' — drives the auto touch-controls mode
-  let padName = null;
+  let pads = []; // names of the first two connected pads, in index order
 
+  /** Which player pad n (0 / 1) drives: 2P off → every pad 1P; on → one pad 2P, two pads 1P + 2P; null = unused. */
+  const padPlayer = (n) => (!twoP ? (n === 0 ? 0 : null) : pads.length < 2 ? (n === 0 ? 1 : null) : n);
+  const playerOf = (from) => (from === 'pad0' ? padPlayer(0) : from === 'pad1' ? padPlayer(1) : 0);
   function setInput(from, id, on) {
     src[from][id] = on;
-    const want = !!(src.kb[id] || src.pad[id] || src.touch[id]);
-    if (!started || sent[id] === want) return;
-    sent[id] = want;
-    emu.gameManager.simulateInput(0, id, want ? 1 : 0);
+    const p = playerOf(from);
+    if (p === null) return;
+    const want = Object.keys(src).some((s) => playerOf(s) === p && src[s][id]);
+    if (!started || !!sent[p][id] === want) return; // never sent = released
+    sent[p][id] = want;
+    emu.gameManager.simulateInput(p, id, want ? 1 : 0);
   }
   const releaseAll = (from) => { for (const id in src[from]) if (src[from][id]) setInput(from, +id, false); };
+  /** Before pads change player (toggle, a pad (dis)connects): let go of everything the pads hold, under the old mapping. */
+  const releasePads = () => { releaseAll('pad0'); releaseAll('pad1'); };
 
   // ── game.json / romset ────────────────────────────────────────────────
   function writeGame() {
@@ -365,43 +380,61 @@
   // ── gamepad ───────────────────────────────────────────────────────────
   // The Gamepad API has no button events, so this polls once per frame (EmulatorJS's own handler polls every 10 ms);
   // it also catches pads Chrome connects without a gamepadconnected event inside iframes.
-  let lbPrev = false;
+  // Every connected pad is read (the first two count): which player each drives is padPlayer(), set by the 2P toggle.
+  const lbPrev = [false, false];
   function padLoop() {
     requestAnimationFrame(padLoop);
-    let gp = null;
-    try { gp = [...(navigator.getGamepads?.() ?? [])].find((p) => p && p.connected !== false) ?? null; } catch {}
-    const name = gp ? simplifyPadName(gp.id) : null;
-    if (name !== padName) {
-      padName = name;
-      if (name) noteInput('pad'); else { releaseAll('pad'); renderTouch(); }
+    let gps = [];
+    try { gps = [...(navigator.getGamepads?.() ?? [])].filter((p) => p && p.connected !== false).slice(0, 2); } catch {}
+    const names = gps.map((g) => simplifyPadName(g.id));
+    if (names.join('\n') !== pads.join('\n')) {
+      releasePads(); // the mapping changes with the pad count / order: nothing held may stay stuck on the old player
+      const had = pads.length;
+      pads = names;
+      if (pads.length > had) noteInput('pad'); else if (!pads.length) renderTouch();
       renderChip();
     }
-    if (!gp || !started) return;
-    const on = (i) => !!gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5);
-    const ax = gp.axes || [];
-    const dirs = [[R.UP, on(12) || ax[1] < -0.5], [R.DOWN, on(13) || ax[1] > 0.5], [R.LEFT, on(14) || ax[0] < -0.5], [R.RIGHT, on(15) || ax[0] > 0.5]];
-    let any = false;
-    for (const [id, p] of dirs) { any ||= p; setInput('pad', id, p); }
-    for (const [i, id] of Object.entries(padMap())) { const p = on(+i); any ||= p; setInput('pad', id, p); }
-    const lb = on(4);
-    if (lb && !lbPrev) togglePause();
-    lbPrev = lb;
-    if (any || lb) noteInput('pad');
+    if (!started) return;
+    gps.forEach((gp, n) => {
+      const from = `pad${n}`;
+      if (padPlayer(n) === null) { lbPrev[n] = false; return; } // 2P off: a second pad stays idle
+      const on = (i) => !!gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5);
+      const ax = gp.axes || [];
+      const dirs = [[R.UP, on(12) || ax[1] < -0.5], [R.DOWN, on(13) || ax[1] > 0.5], [R.LEFT, on(14) || ax[0] < -0.5], [R.RIGHT, on(15) || ax[0] > 0.5]];
+      let any = false;
+      for (const [id, p] of dirs) { any ||= p; setInput(from, id, p); }
+      for (const [i, id] of Object.entries(padMap())) { const p = on(+i); any ||= p; setInput(from, id, p); }
+      const lb = on(4);
+      if (lb && !lbPrev[n]) togglePause(); // LB on either pad
+      lbPrev[n] = lb;
+      if (any || lb) noteInput('pad');
+    });
   }
   const simplifyPadName = (id) => (id.replace(/\s*\(.*\)\s*$/, '').replace(/^[0-9a-f]{1,4}-[0-9a-f]{1,4}-/i, '').trim() || id).slice(0, 40);
   addEventListener('gamepadconnected', () => {});    // listening makes some browsers expose pads sooner; padLoop does the work
   addEventListener('gamepaddisconnected', () => {});
   function renderChip() {
-    const c = $('pad');
-    c.textContent = !window.isSecureContext || !navigator.getGamepads ? t('padInsecure') : padName ? t('padOn', padName) : t('padOff');
-    c.classList.toggle('on', !!padName);
+    const c = $('pad'), pad = (n) => `🎮 ${pads[n]}`;
+    c.textContent = !window.isSecureContext || !navigator.getGamepads ? t('padInsecure')
+      : twoP ? (!pads.length ? t('twoNone') : pads.length < 2 ? t('twoChip', t('twoKb'), pad(0)) : t('twoChip', pad(0), pad(1)))
+      : pads.length ? t('padOn', pads[0]) : t('padOff');
+    c.classList.toggle('on', pads.length > 0);
+    $('bTwo').textContent = t('two');
+    $('bTwo').classList.toggle('on', twoP);
+    $('bTwo').setAttribute('aria-pressed', String(twoP));
   }
+  $('bTwo').addEventListener('click', () => {
+    releasePads(); // under the old mapping
+    twoP = !twoP;
+    localStorage.setItem(LS + 'two', twoP ? 'on' : 'off');
+    renderChip();
+  });
 
   // ── touch controls: our floating stick + EmulatorJS's buttons ─────────
   function noteInput(from) { if (lastInput !== from) { lastInput = from; renderTouch(); } }
   function touchShown() {
     if (touchMode !== 'auto') return touchMode === 'on';
-    return touchCapable && (lastInput === 'touch' || (lastInput === null && !padName));
+    return touchCapable && (lastInput === 'touch' || (lastInput === null && !pads.length));
   }
   function renderTouch() {
     $('bTouch').textContent = t('touch', touchMode);

@@ -43,25 +43,26 @@ The labels follow FBNeo's own numbering on its default (classic) RetroPad layout
 - **Esc** is not bound — in a maximized Halo canvas Esc exits the maximized view.
 - **Touch controls**: a **floating stick** on the left — touch anywhere in the left half of the game (below the top 56 px) and the stick centres under your finger; 8 directions with a deadzone, the knob clamps at the rim, and on release it fades back to a resting spot bottom-left. Buttons are EmulatorJS's on-screen ones, restyled: 2×3 grid bottom-right labelled 3 4 6 / 1 2 5, coin · start · pause bottom-centre. All ~40% opaque, nothing in the top 56 px (the host's controls). The stick follows only the touch that started it, so it and several buttons work at once. *Auto* (default) shows the controls on touch screens until a keyboard key or a gamepad is used, and brings them back on the next touch; the toolbar button cycles **Auto / On / Off** (remembered per browser).
 - **Gamepads** need a secure context (HTTPS or localhost); a Bluetooth pad shows up after its first button press. The toolbar chip shows the connected pad.
+- **Two players** (local, same screen): the toolbar's **👥 2 Players** / 「👥 双人」 (off by default, remembered per browser). With one gamepad the keyboard plays 1P and the pad 2P; with two gamepads the first (in the browser's pad order) is 1P and the second 2P, and the keyboard still drives 1P; a third pad is ignored. Touch is always 1P. Each pad's Start and Select go to its own player, LB on either pad pauses; buttons are mapped as in the table above. Plugging, unplugging or toggling releases every held input, so nothing stays pressed. The chip shows who plays on what, e.g. `1P ⌨ Keyboard · 2P 🎮 <pad>`. Off, everything drives 1P as before. Not on one shared keyboard, no netplay.
 
 ## Install
 
 - Agent: `/extension install arcade`
-- Admin → Extensions → upload `arcade-2.1.0.zip` (from the GitHub release, ~8.5 MB)
+- Admin → Extensions → upload `arcade-2.2.0.zip` (from the GitHub release, ~8.5 MB)
 - Manual: `./fetch-deps.sh && cp -r extensions/arcade ~/.halo/global/extensions/`
 
 ## Package
 
 ```bash
 extensions/arcade/fetch-deps.sh          # npm EmulatorJS + FBNeo core (sha256-checked) → emulatorjs/ (~9 MB)
-node scripts/pack.mjs extensions/arcade   # → dist/arcade-2.1.0.zip
+node scripts/pack.mjs extensions/arcade   # → dist/arcade-2.2.0.zip
 ```
 
 `emulatorjs/` is gitignored and ships only inside the release zip. To upgrade, bump the versions + sha256 in `fetch-deps.sh` (and `NOTICE`), re-run, regenerate `romsets.json` (`node src/romsets.mjs emulatorjs/cores/fbneo-legacy-wasm.data > romsets.json`, needs `7z`), check that `emulatorjs-offline.patch` still applies, and re-test: pick a romset, a known one boots, a Neo Geo set boots with `neogeo.zip` next to it and names it when it isn't, an unknown one shows the unknown-romset page, the six buttons, gamepad, save / load into `saves/`, the stick + touch buttons, each display option, no network requests.
 
 ## Limits
 
-- Single player (1P). No netplay, cheats, rewind, fast-forward, dip switches or service menu.
+- Up to two local players (keyboard + gamepad, or two gamepads); not two on one keyboard. No netplay, cheats, rewind, fast-forward, dip switches or service menu.
 - Only romsets in **this** FBNeo build's driver list, in the matching romset version (the BIOS / parent zips too). Parent / BIOS zips are found only **next to the romset** — same folder, file names unchanged; there is no separate BIOS folder setting.
 - Vertical games are shown rotated as the core outputs them; there is no rotate option.
 - Needs Halo with bundle extensions + the `pick` frame and the `fs-read` capability (`fs` scopes `workspace` / `system`).
