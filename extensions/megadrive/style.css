@@ -24,6 +24,7 @@ body { background: var(--h-background); color: var(--h-foreground); font: 13px/1
 .bar button:hover:not(:disabled) { border-color: var(--h-primary); }
 .bar button:disabled { opacity: .45; cursor: default; }
 .bar button.icon { padding: 3px 6px; }
+.bar button.on { border-color: var(--h-primary); background: color-mix(in srgb, var(--h-primary) 22%, var(--h-secondary)); }
 .bar input[type='range'] { width: 72px; flex: none; accent-color: var(--h-primary); }
 .bar .sel { display: flex; align-items: center; gap: 4px; flex: none; font-size: 12px; white-space: nowrap; }
 .bar select { font: inherit; font-size: 12px; padding: 2px 4px; border-radius: 6px; border: 1px solid var(--h-border); background: var(--h-secondary); color: var(--h-secondary-foreground); cursor: pointer; }
