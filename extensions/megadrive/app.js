@@ -145,7 +145,7 @@
     }
     return out.length ? { path: out.join('/'), scope: 'workspace' } : null;
   }
-  /** workspace path → relative to the bundle dir (inside it: "sf2.zip"; elsewhere: "../roms/sf2.zip"). */
+  /** workspace path → relative to the bundle dir (inside it: "mygame.zip"; elsewhere: "../roms/mygame.zip"). */
   function relFromBundle(dir, target) {
     const a = dir.split('/').filter(Boolean), b = target.split('/');
     let i = 0;
@@ -186,7 +186,7 @@
   // EmulatorJS simulate_input indices are libretro RetroPad ids.
   const R = { B: 0, Y: 1, SELECT: 2, START: 3, UP: 4, DOWN: 5, LEFT: 6, RIGHT: 7, A: 8, X: 9, L: 10, R: 11 };
   // Genesis Plus GX 6-button pad (libretro.c osd_input_update): RetroPad Y/B/A → Genesis A/B/C, L/X/R → X/Y/Z,
-  // SELECT → MODE. The core auto-selects the 6-button pad for games whose header lists it ("J6", e.g. SF2), else 3.
+  // SELECT → MODE. The core auto-selects the 6-button pad for games whose header lists it ("J6"), else 3.
   const MD = { X: R.L, Y: R.X, Z: R.R, A: R.Y, B: R.B, C: R.A };
   // Master System / Game Gear 2-button pad: RetroPad B → button 1, A → button 2.
   const keyMap = () => ({

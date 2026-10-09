@@ -4,15 +4,15 @@ Halo Canvas preview extension: plays **Sega Mega Drive / Genesis** ROMs — and 
 
 ## A `.mega` folder per game
 
-The extension opens a **`.mega` bundle** — a folder Halo shows as one file (`bundle: true`). Make one with **New File…** in the explorer's right-click menu, e.g. `Street Fighter II.mega`. It holds:
+The extension opens a **`.mega` bundle** — a folder Halo shows as one file (`bundle: true`). Make one with **New File…** in the explorer's right-click menu, e.g. `My Game.mega`. It holds:
 
 ```
-Street Fighter II.mega/
-  game.json          {"version": 1, "rom": "../roms/sf2.zip", "shader": "crt"}
-  saves/sf2.state    quick save (F2), one per ROM
+My Game.mega/
+  game.json          {"version": 1, "rom": "../roms/mygame.zip", "shader": "crt"}
+  saves/mygame.state quick save (F2), one per ROM
 ```
 
-- **The ROM stays where it is — anywhere on the machine.** 「选择 ROM」 / *Choose ROM* opens Halo's file picker (capability `fs-read`, starting in the bundle folder; it can browse the whole machine). A ROM inside the workspace is stored in `game.json` as a path relative to the bundle (`../roms/sf2.zip`, or `sf2.zip` for a ROM inside it), so the bundle stays portable; a ROM outside the workspace is stored as its absolute path (`/home/me/roms/sf2.zip`, `C:/roms/sf2.zip`). Every open reads the ROM from there, read-only — `fs` `scope: 'workspace'` for a relative path, `scope: 'system'` for an absolute one. Nothing but `game.json` and `saves/` is ever written into the bundle — never the ROM or anything extracted from it.
+- **The ROM stays where it is — anywhere on the machine.** 「选择 ROM」 / *Choose ROM* opens Halo's file picker (capability `fs-read`, starting in the bundle folder; it can browse the whole machine). A ROM inside the workspace is stored in `game.json` as a path relative to the bundle (`../roms/mygame.zip`, or `mygame.zip` for a ROM inside it), so the bundle stays portable; a ROM outside the workspace is stored as its absolute path (`/home/me/roms/mygame.zip`, `C:/roms/mygame.zip`). Every open reads the ROM from there, read-only — `fs` `scope: 'workspace'` for a relative path, `scope: 'system'` for an absolute one. Nothing but `game.json` and `saves/` is ever written into the bundle — never the ROM or anything extracted from it.
 - Accepts `.zip` and `.7z` archives holding a ROM, and bare `.md` `.gen` `.smd` `.bin` `.sms` `.gg`. Archives are unpacked in the page with EmulatorJS's own extractors; the first `.md` / `.gen` / `.smd` / `.sms` / `.gg` inside wins, else a single `.bin` of at least 128 KiB. An archive without one shows 「压缩包里没有 MD ROM（支持 .md .gen .smd .bin .sms .gg）」 with its file list.
 - Opening a bundle with a ROM goes straight to 「▶ 开始 · <ROM name>」 — click or press Enter. A ROM that was moved or deleted shows the stored path and 「换一个 ROM」 / *Change ROM*. The toolbar's **📁 Change ROM** rewrites `game.json` and reloads the page.
 - `game.json` is written pretty-printed; keys this version doesn't know are kept. `.zip` / `.md` files in the workspace are no longer claimed — they open as Halo normally opens them.
@@ -67,3 +67,5 @@ node scripts/pack.mjs extensions/megadrive   # → dist/megadrive-2.0.0.zip
 ## Licenses
 
 `LICENSE` (glue code, MIT) and `NOTICE`. EmulatorJS is **GPL-3.0** (`emulatorjs/LICENSE`); the display filters in `emulatorjs/src/shaders.js` are libretro shaders under the GPL (see `NOTICE`); the Genesis Plus GX core is under its own **non-commercial** license (`LICENSE-GENESIS-PLUS-GX.txt`) — this extension may not be sold or used in a commercial product or activity.
+
+Not affiliated with or endorsed by Sega. Mega Drive, Genesis, Master System and Game Gear are trademarks of their respective owners; the names are used only to say which ROM formats the extension plays.
