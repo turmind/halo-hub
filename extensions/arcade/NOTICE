@@ -46,3 +46,7 @@ FinalBurn Neo (EmulatorJS build 2.0.2, libretro core)
   monetary profit from FB Neo; source changes must be made public; this licence text must be included in
   full; no distribution with ROM images without the legal right; no asking for donations. FB Neo contains
   MAME code and is therefore also subject to the MAME license referenced in LICENSE-FBNEO.txt.
+
+romsets.json            (next to app.js)
+  Which BIOS / parent zips each arcade set needs, plus their titles: data read out of the FinalBurn Neo core
+  above (its driver table) by src/romsets.mjs (repo only, not in the zip). Same FinalBurn Neo licence.

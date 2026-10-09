@@ -14,11 +14,12 @@ gridlee.arcade/
 
 - **The romset stays where it is — anywhere on the machine.** 「选择 ROM」 / *Choose ROM* opens Halo's file picker (capability `fs-read`, starting in the bundle folder; it can browse the whole machine). A zip inside the workspace is stored in `game.json` as a path relative to the bundle (`../gridlee.zip`), so the bundle stays portable; a zip outside the workspace is stored as its absolute path (`/home/me/roms/gridlee.zip`, `C:/roms/gridlee.zip`). Every open reads the zip from there, read-only — `fs` `scope: 'workspace'` for a relative path, `scope: 'system'` for an absolute one — and hands it to FBNeo unchanged. Nothing but `game.json` and `saves/` is ever written into the bundle.
 - Accepts **`.zip` romsets as distributed**: FBNeo finds the game by the zip's file name (`gridlee.zip` = romset `gridlee`, the MAME short name) and checks the chips inside itself, so don't rename, unpack or repack it. **`.7z` is not accepted**: this FBNeo build's `core.json` lists 7z, but it does not load 7z romsets (tested with LZMA2, LZMA and stored 7z of a working set — "No romset found").
-- A zip FBNeo doesn't know (a name missing from this FBNeo build's game list, missing / wrong-version files) shows "FinalBurn Neo doesn't know the romset …" with the archive's file list and the short-name hint, instead of RetroArch's menu. A zip that clearly isn't a romset (empty, unreadable, or holding a console cartridge / disc image) shows "This file is not an arcade romset" with the same hint.
+- **Parent / BIOS zips: put them next to the romset.** Many sets need other zips as well: a board's BIOS (Neo Geo games → `neogeo.zip`, PGM → `pgm.zip`), a clone's parent (`kov115` → `kov.zip`), or both (`kov115` → `pgm.zip` + `kov.zip`). The ones the set needs are read from the folder its zip is in (just those files, never the whole folder) and written unchanged next to it in the core's file system, where FBNeo looks for them; nothing is configured in `game.json`. Which zips a set needs comes from `romsets.json`, generated from the bundled core's own driver table by `src/romsets.mjs` (5759 arcade sets). If one is missing, the page names it and its folder — 「需要 neogeo.zip（Neo Geo BIOS）」 / *Needs neogeo.zip (Neo Geo BIOS)* — with 「放好了，重试」 / *Done — try again*, before anything boots.
+- A zip FBNeo doesn't know (a name missing from this FBNeo build's game list) shows "FinalBurn Neo doesn't know the romset …" with the archive's file list and the short-name hint, instead of RetroArch's menu; a known set whose zips lack chips or are another romset version shows "Romset files missing or from another version" the same way, instead of FBNeo's error text in the game screen. A zip that clearly isn't a romset (empty, unreadable, or holding a console cartridge / disc image) shows "This file is not an arcade romset" with the same hint.
 - Opening a bundle with a romset goes straight to 「▶ 开始 · <zip name>」 — click or press Enter. A zip that was moved or deleted shows the stored path and 「换一个 ROM」 / *Change ROM*; the toolbar's **📁 Change ROM** rewrites `game.json` and reloads the page.
 - `game.json` is written pretty-printed; keys this version doesn't know are kept. `.zip` files in the workspace are no longer claimed — they open as Halo normally opens them.
 
-Tested with romsets from [mamedev.org/roms](https://www.mamedev.org/roms/) (free for non-commercial use), unmodified: `gridlee` and `alienar` boot and play (coin, start, move, fire); `robby` is not in this FBNeo build's driver list and shows the unknown-romset page.
+Tested with romsets from [mamedev.org/roms](https://www.mamedev.org/roms/) (free for non-commercial use), unmodified: `gridlee` and `alienar` boot and play (coin, start, move, fire); `robby` is not in this FBNeo build's driver list and shows the unknown-romset page. With BIOS / parent zips next to them: `kof97`, `kof98`, `mslug3` (+ `neogeo.zip`), `kov` (+ `pgm.zip`), `kov115` (+ `pgm.zip` + `kov.zip`).
 
 ## Controls
 
@@ -46,22 +47,22 @@ The labels follow FBNeo's own numbering on its default (classic) RetroPad layout
 ## Install
 
 - Agent: `/extension install arcade`
-- Admin → Extensions → upload `arcade-2.0.0.zip` (from the GitHub release, ~8.5 MB)
+- Admin → Extensions → upload `arcade-2.1.0.zip` (from the GitHub release, ~8.5 MB)
 - Manual: `./fetch-deps.sh && cp -r extensions/arcade ~/.halo/global/extensions/`
 
 ## Package
 
 ```bash
 extensions/arcade/fetch-deps.sh          # npm EmulatorJS + FBNeo core (sha256-checked) → emulatorjs/ (~9 MB)
-node scripts/pack.mjs extensions/arcade   # → dist/arcade-2.0.0.zip
+node scripts/pack.mjs extensions/arcade   # → dist/arcade-2.1.0.zip
 ```
 
-`emulatorjs/` is gitignored and ships only inside the release zip. To upgrade, bump the versions + sha256 in `fetch-deps.sh` (and `NOTICE`), re-run, check that `emulatorjs-offline.patch` still applies, and re-test: pick a romset, a known one boots, an unknown one shows the unknown-romset page, the six buttons, gamepad, save / load into `saves/`, the stick + touch buttons, each display option, no network requests.
+`emulatorjs/` is gitignored and ships only inside the release zip. To upgrade, bump the versions + sha256 in `fetch-deps.sh` (and `NOTICE`), re-run, regenerate `romsets.json` (`node src/romsets.mjs emulatorjs/cores/fbneo-legacy-wasm.data > romsets.json`, needs `7z`), check that `emulatorjs-offline.patch` still applies, and re-test: pick a romset, a known one boots, a Neo Geo set boots with `neogeo.zip` next to it and names it when it isn't, an unknown one shows the unknown-romset page, the six buttons, gamepad, save / load into `saves/`, the stick + touch buttons, each display option, no network requests.
 
 ## Limits
 
 - Single player (1P). No netplay, cheats, rewind, fast-forward, dip switches or service menu.
-- Only romsets in **this** FBNeo build's driver list, in the matching romset version; no parent / BIOS zips (games that need a separate parent or BIOS zip, e.g. Neo Geo's `neogeo.zip`, can't be loaded alongside it).
+- Only romsets in **this** FBNeo build's driver list, in the matching romset version (the BIOS / parent zips too). Parent / BIOS zips are found only **next to the romset** — same folder, file names unchanged; there is no separate BIOS folder setting.
 - Vertical games are shown rotated as the core outputs them; there is no rotate option.
 - Needs Halo with bundle extensions + the `pick` frame and the `fs-read` capability (`fs` scopes `workspace` / `system`).
 - The core is the WebGL 1 build EmulatorJS 4.2.3 selects by default; the threaded builds need cross-origin isolation, which Halo does not send.

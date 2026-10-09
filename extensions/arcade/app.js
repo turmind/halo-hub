@@ -27,6 +27,10 @@
       missing: '找不到 ROM', missingText: (p) => `game.json 里记的是「${p}」，那里没有这个文件（可能被移动、改名或删除了）。`, readFail: (e) => `读取失败：${e}`,
       notSet: '这个文件不是街机 romset', unknownTitle: 'FinalBurn Neo 不认识这个 romset',
       unknownSet: (n) => `FinalBurn Neo 不认识「${n}」这个 romset（名称不在本版本的游戏列表里，或文件不全 / 版本不符）。`,
+      badSetTitle: 'romset 文件不全或版本不符',
+      incomplete: (n) => `FinalBurn Neo 认得「${n}」，但启动不了：压缩包里缺文件或版本不符（romset 和它的 BIOS / 父 romset 都要和本版本的 FinalBurn Neo 匹配）。`,
+      needsTitle: '还缺 BIOS / 父 romset', needOne: (z, what) => `需要 ${z}（${what}）`, parentOf: (title) => `父 romset：${title}`,
+      needsWhere: (n) => `放到 ${n} 所在的文件夹，文件名不要改，也不要解压：`, retry: '放好了，重试',
       setHint: 'romset 的文件名必须是 MAME 短名（如 gridlee.zip、alienar.zip），压缩包里是原样的芯片文件；主机游戏 ROM 请用对应主机的扩展。',
       badZip: '读不出压缩包目录（不是 .zip，或文件已损坏）。', entries: (n) => `压缩包内容（${n} 项）`, more: (n) => `…还有 ${n} 项`,
       padOn: (n) => `🎮 已连接：${n}`, padOff: '未检测到手柄 — 连接后按任意键唤醒', padInsecure: '手柄需要 HTTPS 或 localhost 访问',
@@ -41,6 +45,7 @@
         '按键编号沿用 FinalBurn Neo：J K 是 1 2（大多数游戏只用这两个），U I 是 3 4，L 是 5，O 是 6。六键格斗游戏例外：游戏里的 1 2 3 在上排 U I O，4 5 6 在下排 J K L。',
         '快速存档（F2 / F4）保存在这个 .arcade 目录的 saves/ 里，跟着工作区走。',
         'romset 不会复制进这个目录，game.json 只记下它的位置（在工作区里记相对位置，在工作区外记绝对路径）；挪了地方就点「换一个 ROM」重新选。',
+        'Neo Geo、PGM 等基板的游戏还要 BIOS（neogeo.zip、pgm.zip…），克隆版还要父 romset（如 kov115 要 kov.zip）：原样放在游戏 zip 所在的文件夹就会自动带上，不用设置；缺了会直接告诉你缺哪个。',
         '在 Halo 里放大画布时，Esc 用于退出放大。',
         '触屏设备上：左半屏任意位置按下就出现摇杆（八个方向），右边是动作按钮；用了键盘或手柄就自动隐藏，再摸一下屏幕又会出现。工具栏「虚拟手柄」可切换 自动 / 开 / 关。',
         '蓝牙手柄连上后要先按一下任意键，浏览器才会识别。',
@@ -58,6 +63,10 @@
       missing: 'ROM not found', missingText: (p) => `game.json points to “${p}”, but there is no file there (moved, renamed or deleted?).`, readFail: (e) => `Could not read it: ${e}`,
       notSet: 'This file is not an arcade romset', unknownTitle: 'FinalBurn Neo doesn’t know this romset',
       unknownSet: (n) => `FinalBurn Neo doesn’t know the romset “${n}” (the name is not in this version’s game list, or files are missing / from another version).`,
+      badSetTitle: 'Romset files missing or from another version',
+      incomplete: (n) => `FinalBurn Neo knows “${n}” but could not start it: files are missing from the zips or are from another version (the romset and its BIOS / parent romset must all match this FinalBurn Neo version).`,
+      needsTitle: 'A BIOS / parent romset is missing', needOne: (z, what) => `Needs ${z} (${what})`, parentOf: (title) => `parent romset: ${title}`,
+      needsWhere: (n) => `Put it in the folder ${n} is in — same file name, not unpacked:`, retry: 'Done — try again',
       setHint: 'A romset’s file name must be the MAME short name (e.g. gridlee.zip, alienar.zip), holding the chip dumps as distributed; console ROMs need that console’s extension.',
       badZip: 'Could not read the archive directory (not a .zip, or the file is damaged).', entries: (n) => `Archive contents (${n})`, more: (n) => `…${n} more`,
       padOn: (n) => `🎮 Connected: ${n}`, padOff: 'No gamepad — press any button on it to wake it', padInsecure: 'Gamepads need HTTPS or localhost',
@@ -72,6 +81,7 @@
         'Button numbers follow FinalBurn Neo: J K are 1 2 (most games use only these), U I are 3 4, L is 5, O is 6. Six-button fighting games differ: the game’s buttons 1 2 3 are the top row U I O and 4 5 6 the bottom row J K L.',
         'Quick saves (F2 / F4) go to saves/ inside this .arcade folder and travel with the workspace.',
         'The romset is never copied into this folder — game.json only stores where it is (relative to this folder inside the workspace, an absolute path outside it). If you move it, pick it again with “Change ROM”.',
+        'Neo Geo, PGM and other boards also need their BIOS zip (neogeo.zip, pgm.zip, …), and a clone needs its parent romset (kov115 needs kov.zip): put them, unchanged, in the folder the game’s zip is in and they are picked up automatically — nothing to set up; a missing one is named on screen.',
         'When the Halo canvas is maximized, Esc exits the maximized view.',
         'Touch screens: press anywhere in the left half for a stick (8 directions); the action buttons are on the right. They hide when you use a keyboard or gamepad and come back on the next touch. The “Touch controls” toolbar button cycles Auto / On / Off.',
         'A Bluetooth gamepad shows up only after you press one of its buttons.',
@@ -122,6 +132,27 @@
     const files = entries.filter((e) => !e.dir);
     if (!files.length || files.some((e) => CONSOLE_EXT.has(extOf(e.name)))) return false;
     return !(files.length === 1 && extOf(files[0].name) === 'bin' && files[0].size >= 128 * 1024);
+  }
+
+  // Many sets also need other zips: a board's BIOS (Neo Geo → neogeo.zip, PGM → pgm.zip), a clone's parent (kov115 →
+  // kov.zip), sometimes both. FBNeo opens those by name from the romset's directory, so the needed ones that sit next
+  // to the romset go to the core's FS beside it, unchanged. Which ones a set needs is romsets.json — read out of the
+  // bundled core's driver table by src/romsets.mjs, so it matches this build. Only those files are read, never the folder.
+  let romsets = null; // { needs: Map set → [zip names without .zip], titles, bios: Set }
+  async function needsOf(set) {
+    if (!romsets) {
+      const j = await (await fetch('romsets.json')).json();
+      const needs = new Map();
+      for (const [zips, sets] of Object.entries(j.needs)) for (const s of sets.split(' ')) needs.set(s, zips.split(' '));
+      romsets = { needs, titles: j.titles, bios: new Set(j.bios) };
+    }
+    return romsets.needs.get(set) ?? [];
+  }
+  /** "Neo Geo BIOS" / "PGM (Polygame Master) System BIOS" / "parent romset: Knights of Valour …" */
+  function zipWhat(z) {
+    const title = romsets.titles[z] ?? z;
+    if (!romsets.bios.has(z)) return t('parentOf', title);
+    return /\b(bios|rom)\b/i.test(title) ? title : `${title} BIOS`;
   }
 
   // ── host fs / pick ────────────────────────────────────────────────────
@@ -207,7 +238,8 @@
   let file = null;                 // init.file: the bundle directory (workspace-relative path)
   let game = { version: 1 };       // game.json as read; unknown keys are kept on write
   let rom = null;                  // { name, bytes } handed to EmulatorJS (the zip, as-is)
-  let romPath = null, readError = null, entries = null, unknownSet = null;
+  let romPath = null, readError = null, entries = null, unknownSet = null, incomplete = false;
+  let extras = [], lacking = [];   // the BIOS / parent zips written next to the romset ({ name, bytes }); the missing ones
   let sys = null, emu = null, booting = false, started = false;
   const pauseWhy = new Set(); // 'user' | 'blur' | 'help'
   const src = { kb: {}, pad: {}, touch: {} }, sent = {}; // per-source held RetroPad ids → what the core last got
@@ -251,8 +283,16 @@
       return show('missing');
     }
     entries = zipEntries(buf);
-    unknownSet = null;
+    unknownSet = null; incomplete = false;
     if (!entries || !zipIsRomset(entries)) return show('notrom');
+    // the needed BIOS / parent zips, read from the romset's own folder (same scope), each only if the set needs it
+    const dir = romPath.slice(0, romPath.length - baseOf(romPath).length);
+    const got = await Promise.all((await needsOf(stem(romPath))).map((z) => fsCall('read', `${dir}${z}.zip`, { scope: loc.scope }).then(
+      (r) => ({ name: `${z}.zip`, bytes: new Uint8Array(r.buffer) }),
+      (e) => { if (e.code !== 'not-found' && e.code !== 'invalid-path') readError = e.message; return z; })));
+    extras = got.filter((g) => typeof g === 'object');
+    lacking = got.filter((g) => typeof g === 'string');
+    if (lacking.length) return show('needs');
     rom = { name: baseOf(romPath), bytes: new Uint8Array(buf) };
     sys = SYS;
     show('start');
@@ -518,7 +558,7 @@
   $('bHelpClose').addEventListener('click', () => showHelp(false));
 
   // ── screens ───────────────────────────────────────────────────────────
-  const SCREENS = ['busy', 'choose', 'start', 'missing', 'notrom'];
+  const SCREENS = ['busy', 'choose', 'start', 'missing', 'needs', 'notrom'];
   let screen = 'busy';
   function show(name) {
     screen = name;
@@ -538,15 +578,28 @@
     $('readError').textContent = readError ? t('readFail', readError) : '';
     renderPause(); renderChip(); renderTouch(); renderHelp(); relabelTouch(); renderShader();
     if (screen === 'notrom') renderEntries();
+    if (screen === 'needs') renderNeeds();
   }
+  function renderNeeds() {
+    const ul = $('needsList');
+    ul.textContent = '';
+    for (const z of lacking) { const el = document.createElement('li'); el.textContent = t('needOne', `${z}.zip`, zipWhat(z)); ul.append(el); }
+    $('needsWhere').textContent = t('needsWhere', baseOf(romPath));
+    const dir = romPath.slice(0, romPath.length - baseOf(romPath).length - 1); // '' = the workspace root
+    $('needsDir').textContent = dir;
+    $('needsDir').hidden = !dir;
+    $('needsError').hidden = !readError;
+    $('needsError').textContent = readError ? t('readFail', readError) : '';
+  }
+  $('bRetry').addEventListener('click', () => prepare());
   function renderEntries() {
     const ul = $('entries');
     ul.textContent = '';
     const li = (s, cls) => { const el = document.createElement('li'); el.textContent = s; if (cls) el.className = cls; ul.append(el); };
-    $('notromTitle').textContent = unknownSet ? t('unknownTitle') : t('notSet');
+    $('notromTitle').textContent = unknownSet ? t('unknownTitle') : incomplete ? t('badSetTitle') : t('notSet');
     $('notromName').textContent = romPath ?? '';
-    $('unknown').hidden = !unknownSet;
-    $('unknown').textContent = unknownSet ? t('unknownSet', unknownSet) : '';
+    $('unknown').hidden = !unknownSet && !incomplete;
+    $('unknown').textContent = unknownSet ? t('unknownSet', unknownSet) : incomplete ? t('incomplete', stem(rom.name)) : '';
     if (!entries) return li(t('badZip'));
     li(t('entries', entries.length), 'head');
     for (const e of entries.slice(0, 50)) li(e.name);
@@ -589,6 +642,9 @@
       };
       if (lang === 'zh') { config.language = 'zh-CN'; config.langJson = await (await fetch('emulatorjs/localization/zh-CN.json')).json(); }
       emu = window.EJS_emulator = new window.EmulatorJS('#game', config);
+      // the core's FS exists from here until the game is loaded; the BIOS / parent zips go next to the romset ("/<set>.zip",
+      // the core's rom dir), as-is — EmulatorJS's own biosUrl / gameParentUrl take one of each and fetch them by URL
+      emu.on('saveDatabaseLoaded', (fs) => { for (const x of extras.splice(0)) fs.writeFile(`/${x.name}`, x.bytes); });
       emu.on('start', onStarted);
     } catch (err) {
       booting = false;
@@ -599,16 +655,20 @@
     // FinalBurn Neo looks the romset up by file name when RetroArch loads it; an unknown / incomplete set makes it
     // shut down right away and RetroArch falls back to its menu ("dummy" core), whose state has no fbneo-* options
     // (reading them throws). Show our page instead of RetroArch's menu, with the archive listing.
+    // A known set whose zips lack chips (or hold another version's) gets past that — FBNeo publishes its options before
+    // it opens the zips — and then draws its own error text into the game; its driver isn't running, so a save state
+    // has size zero (retro_serialize_size). Same page, "files missing or from another version".
     let known = false;
     try { known = /^fbneo-/m.test(emu.gameManager.getCoreOptions()); } catch {}
-    if (!known) {
+    try { incomplete = known && emu.gameManager.functions.saveStateInfo().split('|')[2] !== '1'; } catch {}
+    if (!known || incomplete) {
       booting = false;
       try { emu.gameManager.toggleMainLoop(0); } catch {}
       // EmulatorJS's own "didn't start" flag: its unload hook would otherwise save + restart the dummy core when
       // 「换一个 ROM」 reloads this page, which traps (memory access out of bounds)
       emu.failedToStart = true;
       $('game').hidden = true;
-      unknownSet = stem(rom.name);
+      unknownSet = incomplete ? null : stem(rom.name);
       show('notrom');
       return;
     }

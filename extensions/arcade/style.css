@@ -51,6 +51,9 @@ body { background: var(--h-background); color: var(--h-foreground); font: 13px/1
 .card.slim { max-width: 460px; text-align: center; }
 .hint { text-align: center; font-size: 12px; margin-bottom: 8px; }
 button.big { display: block; margin: 0 auto 4px; font: inherit; font-size: 15px; font-weight: 600; padding: 10px 28px; border-radius: 8px; border: 0; background: var(--h-primary); color: var(--h-primary-foreground); cursor: pointer; }
+button.link { display: block; margin: 8px auto 0; font: inherit; font-size: 13px; border: 0; background: none; color: var(--h-muted-foreground); text-decoration: underline; cursor: pointer; }
+.needs { margin: 10px 0; padding: 0; list-style: none; font-size: 15px; font-weight: 600; }
+.needs li { margin: 4px 0; }
 .entries { margin: 10px 0 0; padding: 8px 10px; list-style: none; max-height: 50vh; overflow: auto; border: 1px solid var(--h-border); border-radius: 6px; background: var(--h-muted); font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .entries .head { font: 600 12px/1.6 system-ui, sans-serif; color: var(--h-muted-foreground); margin-bottom: 4px; }
 

@@ -18,7 +18,8 @@
 #                  Not copied: loader.js (app.js boots EmulatorJS itself), socket.io (netplay), libunrar,
 #                  nipplejs (only the virtual-gamepad "zone" type uses it; our layout has none).
 #                  Then emulatorjs-offline.patch is applied to src/emulator.js (see NOTICE): no update check, no CDN core fallback.
-# Bump the versions + sha256 together, then re-run the dev check in README.md.
+# Bump the versions + sha256 together, regenerate romsets.json from the new core (src/romsets.mjs, needs 7z), then
+# re-run the dev check in README.md.
 set -euo pipefail
 
 EJS_VERSION=4.2.3
