@@ -162,8 +162,18 @@
   // ── display filter ────────────────────────────────────────────────────
   // game.json.shader → EmulatorJS shader preset (data/src/shaders.js: libretro GLSL ports, all GLSL ES 1.0, so they
   // run on the WebGL 1 "-legacy" core build this page loads). Applied live through EmulatorJS's own "shader" setting.
+  // Default (new bundle, or game.json without a shader) = crt. A shader game.json already names is kept.
   const SHADERS = { pixel: null, soft: 'bicubic', hd: 'sabr', crt: 'crt-easymode.glslp' };
-  const shaderKey = () => (Object.hasOwn(SHADERS, game.shader) ? game.shader : 'soft');
+  const shaderKey = () => (Object.hasOwn(SHADERS, game.shader) ? game.shader : 'crt');
+  // crt-easymode lightened through its own #pragma parameters, set in the .glslp preset (RetroArch reads them there):
+  // stock (scanlines 1.0, scanline brightness min 0.35, mask 0.3) is dark and fringes text with the RGB mask on phones.
+  const CRT_LIGHT = { SCANLINE_STRENGTH: 0.6, SCANLINE_BRIGHT_MIN: 0.5, MASK_STRENGTH: 0.15 };
+  function preset(k) {
+    const p = window.EJS_SHADERS[k];
+    if (k !== SHADERS.crt) return p;
+    const params = `parameters = "${Object.keys(CRT_LIGHT).join(';')}"\n` + Object.entries(CRT_LIGHT).map(([n, v]) => `${n} = ${v}\n`).join('');
+    return { ...p, shader: { type: 'text', value: p.shader.value + params } };
+  }
   function applyShader() { if (started) emu.changeSettingOption('shader', SHADERS[shaderKey()] ?? 'disabled'); }
   function renderShader() {
     const sel = $('shader');
@@ -575,7 +585,7 @@
         backgroundColor: '#000', color: '#7aa2f7',
         buttonOpts: off,
         VirtualGamepadSettings: vgLayout(),
-        shaders: Object.fromEntries(Object.values(SHADERS).filter(Boolean).map((k) => [k, window.EJS_SHADERS[k]])),
+        shaders: Object.fromEntries(Object.values(SHADERS).filter(Boolean).map((k) => [k, preset(k)])),
       };
       if (lang === 'zh') { config.language = 'zh-CN'; config.langJson = await (await fetch('emulatorjs/localization/zh-CN.json')).json(); }
       emu = window.EJS_emulator = new window.EmulatorJS('#game', config);

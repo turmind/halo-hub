@@ -1,7 +1,7 @@
 {
   "id": "arcade",
   "name": "Arcade Emulator (FBNeo)",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "FinalBurn Neo arcade romsets in an .arcade folder: pick a romset anywhere on the machine (.zip named after the set), play offline with keyboard, gamepad or touch. No ROMs included.",
   "extensions": [".arcade"],
   "entry": "index.html",

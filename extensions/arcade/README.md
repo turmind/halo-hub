@@ -8,7 +8,7 @@ The extension opens an **`.arcade` bundle** — a folder Halo shows as one file 
 
 ```
 gridlee.arcade/
-  game.json            {"version": 1, "rom": "../roms/gridlee.zip", "shader": "soft"}
+  game.json            {"version": 1, "rom": "../roms/gridlee.zip", "shader": "crt"}
   saves/gridlee.state  quick save (F2), one per romset
 ```
 
@@ -38,7 +38,7 @@ The labels follow FBNeo's own numbering on its default (classic) RetroPad layout
 
 - **Pause**: P / pad LB / toolbar. The game also pauses when the iframe loses focus (typing in the Halo chat, another window) and resumes when it gets focus back; a pause you made yourself stays until you resume it.
 - **Saves**: F2 / F4 (or the toolbar) keep one quick-save state per romset in the bundle, `saves/<set>.state` — it travels with the workspace. Switching editor tabs unmounts the game, so save first.
-- **Display** (「画面」): *Pixel* (no filter), *Soft* (bicubic, default), *HD* (SABR edge smoothing), *CRT* (crt-easymode scanlines + mask). Applied live and stored in `game.json`. Picked for speed on WebGL 1: all four hold ~60 fps on a software renderer; crt-geom / crt-aperture / crt-lottes were too slow and left out.
+- **Display** (「画面」): *Pixel* (no filter), *Soft* (bicubic), *HD* (SABR edge smoothing), *CRT* (default; a light crt-easymode — scanlines + mask, no curvature). CRT is the default for a new bundle and for a `game.json` without `shader`; a shader `game.json` already names is kept. Stock easymode is dark and its RGB mask fringes small text on phones, so its own parameters are set lighter in the preset: `SCANLINE_STRENGTH` 0.6 (stock 1.0), `SCANLINE_BRIGHT_MIN` 0.5 (0.35), `MASK_STRENGTH` 0.15 (0.3). Applied live and stored in `game.json`. Picked for speed on WebGL 1: all four hold ~60 fps on a software renderer; crt-geom / crt-aperture / crt-lottes were too slow and left out.
 - **Esc** is not bound — in a maximized Halo canvas Esc exits the maximized view.
 - **Touch controls**: a **floating stick** on the left — touch anywhere in the left half of the game (below the top 56 px) and the stick centres under your finger; 8 directions with a deadzone, the knob clamps at the rim, and on release it fades back to a resting spot bottom-left. Buttons are EmulatorJS's on-screen ones, restyled: 2×3 grid bottom-right labelled 3 4 6 / 1 2 5, coin · start · pause bottom-centre. All ~40% opaque, nothing in the top 56 px (the host's controls). The stick follows only the touch that started it, so it and several buttons work at once. *Auto* (default) shows the controls on touch screens until a keyboard key or a gamepad is used, and brings them back on the next touch; the toolbar button cycles **Auto / On / Off** (remembered per browser).
 - **Gamepads** need a secure context (HTTPS or localhost); a Bluetooth pad shows up after its first button press. The toolbar chip shows the connected pad.
@@ -46,14 +46,14 @@ The labels follow FBNeo's own numbering on its default (classic) RetroPad layout
 ## Install
 
 - Agent: `/extension install arcade`
-- Admin → Extensions → upload `arcade-1.0.0.zip` (from the GitHub release, ~8.5 MB)
+- Admin → Extensions → upload `arcade-2.0.0.zip` (from the GitHub release, ~8.5 MB)
 - Manual: `./fetch-deps.sh && cp -r extensions/arcade ~/.halo/global/extensions/`
 
 ## Package
 
 ```bash
 extensions/arcade/fetch-deps.sh          # npm EmulatorJS + FBNeo core (sha256-checked) → emulatorjs/ (~9 MB)
-node scripts/pack.mjs extensions/arcade   # → dist/arcade-1.0.0.zip
+node scripts/pack.mjs extensions/arcade   # → dist/arcade-2.0.0.zip
 ```
 
 `emulatorjs/` is gitignored and ships only inside the release zip. To upgrade, bump the versions + sha256 in `fetch-deps.sh` (and `NOTICE`), re-run, check that `emulatorjs-offline.patch` still applies, and re-test: pick a romset, a known one boots, an unknown one shows the unknown-romset page, the six buttons, gamepad, save / load into `saves/`, the stick + touch buttons, each display option, no network requests.
