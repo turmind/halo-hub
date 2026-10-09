@@ -8,7 +8,7 @@ The extension opens a **`.mega` bundle** — a folder Halo shows as one file (`b
 
 ```
 Street Fighter II.mega/
-  game.json          {"version": 1, "rom": "../roms/sf2.zip", "shader": "soft"}
+  game.json          {"version": 1, "rom": "../roms/sf2.zip", "shader": "crt"}
   saves/sf2.state    quick save (F2), one per ROM
 ```
 
@@ -37,7 +37,7 @@ How the keys reach the core (libretro RetroPad ids, Genesis Plus GX's pad mappin
 
 - **Pause**: P / pad LB / toolbar. The game also pauses when the iframe loses focus (typing in the Halo chat, another window) and resumes when it gets focus back; a pause you made yourself stays until you resume it.
 - **Saves**: F2 / F4 (or the toolbar) keep one quick-save state per ROM in the bundle, `saves/<ROM file name without extension>.state` — it travels with the workspace. In-game battery saves (SRAM) stay in this browser. Switching editor tabs unmounts the game, so save first.
-- **Display** (「画面」): *Pixel* (no filter), *Soft* (bicubic, default), *HD* (SABR edge smoothing), *CRT* (crt-easymode scanlines + mask). Applied live and stored in `game.json`. Picked for speed on WebGL 1: all four hold 60 fps on a software renderer at desktop and phone sizes, where crt-geom / crt-aperture / crt-lottes fell to 41 / 47 / 13 fps and were left out.
+- **Display** (「画面」): *Pixel* (no filter), *Soft* (bicubic), *HD* (SABR edge smoothing), *CRT* (default; a light crt-easymode — scanlines + mask, no curvature). CRT is the default for a new bundle and for a `game.json` without `shader`; a shader `game.json` already names is kept. Stock easymode is dark and its RGB mask fringes small text on phones, so its own parameters are set lighter in the preset: `SCANLINE_STRENGTH` 0.6 (stock 1.0), `SCANLINE_BRIGHT_MIN` 0.5 (0.35), `MASK_STRENGTH` 0.15 (0.3). Applied live and stored in `game.json`. Picked for speed on WebGL 1: all four hold 60 fps on a software renderer at desktop and phone sizes, where crt-geom / crt-aperture / crt-lottes fell to 41 / 47 / 13 fps and were left out.
 - **Esc** is not bound — in a maximized Halo canvas Esc exits the maximized view.
 - **Touch controls**: a **floating stick** on the left — touch anywhere in the left half of the game (below the top 56 px) and the stick centres under your finger; 8 directions with a deadzone, the knob clamps at the rim, and on release it fades back to a resting spot bottom-left. Buttons are EmulatorJS's on-screen ones, restyled: 2×3 grid bottom-right labelled X Y Z / A B C, coin · start · pause bottom-centre. All ~40% opaque, nothing in the top 56 px (the host's controls). The stick follows only the touch that started it, so it and several buttons work at once. *Auto* (default) shows the controls on touch screens until a keyboard key or a gamepad is used, and brings them back on the next touch; the toolbar button cycles **Auto / On / Off** (remembered per browser).
 - **Gamepads** need a secure context (HTTPS or localhost); a Bluetooth pad shows up after its first button press. The toolbar chip shows the connected pad.
@@ -45,14 +45,14 @@ How the keys reach the core (libretro RetroPad ids, Genesis Plus GX's pad mappin
 ## Install
 
 - Agent: `/extension install megadrive`
-- Admin → Extensions → upload `megadrive-1.0.0.zip` (from the GitHub release, ~1.5 MB)
+- Admin → Extensions → upload `megadrive-2.0.0.zip` (from the GitHub release, ~1.5 MB)
 - Manual: `./fetch-deps.sh && cp -r extensions/megadrive ~/.halo/global/extensions/`
 
 ## Package
 
 ```bash
 extensions/megadrive/fetch-deps.sh          # npm EmulatorJS + Genesis Plus GX core (sha256-checked) → emulatorjs/ (~2 MB)
-node scripts/pack.mjs extensions/megadrive   # → dist/megadrive-1.0.0.zip
+node scripts/pack.mjs extensions/megadrive   # → dist/megadrive-2.0.0.zip
 ```
 
 `emulatorjs/` is gitignored and ships only inside the release zip. To upgrade, bump the versions + sha256 in `fetch-deps.sh` (and `NOTICE`), re-run, check that `emulatorjs-offline.patch` still applies, and re-test: pick a ROM (zip, 7z, bare), boot, the six buttons, gamepad, save / load into `saves/`, the stick + touch buttons, each display option, no network requests.

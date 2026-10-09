@@ -1,7 +1,7 @@
 {
   "id": "megadrive",
   "name": "Mega Drive / Genesis Emulator",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Mega Drive / Genesis (+ Master System / Game Gear) in a .mega folder: pick a ROM anywhere on the machine (.zip .7z .md .gen …), play offline with keyboard, gamepad or touch. No ROMs included.",
   "extensions": [".mega"],
   "entry": "index.html",
