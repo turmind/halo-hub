@@ -1,12 +1,12 @@
 {
   "id": "ipynb",
   "name": "Jupyter Notebook",
-  "version": "1.0.0",
-  "description": "Read-only .ipynb viewer: markdown, highlighted code, rich outputs, math (offline bundle).",
+  "version": "2.0.0",
+  "description": "Jupyter notebooks: render, edit and save cells offline; run them on a Jupyter kernel through the Halo server (1.6.1+).",
   "extensions": [".ipynb"],
   "entry": "index.html",
   "priority": "default",
-  "capabilities": [],
+  "capabilities": ["save"],
   "homepage": "https://github.com/turmind/halo-hub/tree/main/extensions/ipynb",
   "license": "MIT"
 }

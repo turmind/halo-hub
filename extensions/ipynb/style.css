@@ -4,7 +4,7 @@
   --code-bg: #141416; --code-border: #2b2b30; --row-alt: rgba(255,255,255,.04);
   --link: #6cb6ff; --accent: #6cb6ff; --prompt-in: #7ea6ff; --prompt-out: #ff9e64;
   --err-bg: rgba(248,81,73,.09); --stderr-bg: rgba(248,81,73,.1); --note-bg: rgba(255,255,255,.05);
-  --btn-bg: #1a1a1d; --btn-hover: #26262a;
+  --btn-bg: #1a1a1d; --btn-hover: #26262a; --sel: rgba(108,182,255,.25); --sel-bar: #6cb6ff; --warn: #e3b341;
   --h-comment: #8b949e; --h-keyword: #ff7b72; --h-string: #a5d6ff; --h-number: #79c0ff; --h-title: #d2a8ff;
   --h-type: #ffa657; --h-attr: #79c0ff; --h-meta: #a5d6ff; --h-add: #7ee787; --h-del: #ffa198;
   --a0: #4b4b52; --a1: #ff6b6b; --a2: #5fd17a; --a3: #e0c060; --a4: #6aa8ff; --a5: #d08cf0; --a6: #4fd1c5; --a7: #d4d4d4;
@@ -16,7 +16,7 @@
   --code-bg: #f6f8fa; --code-border: #d0d7de; --row-alt: rgba(0,0,0,.04);
   --link: #0969da; --accent: #0969da; --prompt-in: #0550ae; --prompt-out: #bc4c00;
   --err-bg: rgba(255,0,0,.06); --stderr-bg: rgba(255,0,0,.07); --note-bg: rgba(0,0,0,.05);
-  --btn-bg: #f3f4f6; --btn-hover: #e8eaed;
+  --btn-bg: #f3f4f6; --btn-hover: #e8eaed; --sel: rgba(9,105,218,.18); --sel-bar: #0969da; --warn: #9a6700;
   --h-comment: #6e7781; --h-keyword: #cf222e; --h-string: #0a3069; --h-number: #0550ae; --h-title: #8250df;
   --h-type: #953800; --h-attr: #0550ae; --h-meta: #0a3069; --h-add: #116329; --h-del: #82071e;
   --a0: #24292f; --a1: #c62828; --a2: #1a7f37; --a3: #9a6700; --a4: #0550ae; --a5: #8250df; --a6: #1b7c83; --a7: #6e7781;
@@ -31,13 +31,42 @@ body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 system
 
 header.bar { position: sticky; top: 0; z-index: 5; display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; padding: 7px 16px; background: var(--bg); border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); }
 header.bar .kernel { color: var(--fg); font-weight: 600; }
+header.bar .grow { flex: 1 1 auto; }
+
+/* ---- kernel area (Halo ≥ 1.6.1 with Jupyter) ---- */
+.kbox { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.kbox[hidden], .kbox [hidden] { display: none; }
+.btn, .kpick, .tb { font: 12px system-ui, sans-serif; color: var(--fg); background: var(--btn-bg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; cursor: pointer; }
+.btn:hover:not(:disabled), .tb:hover:not(:disabled) { background: var(--btn-hover); }
+.btn:disabled, .tb:disabled { opacity: .45; cursor: default; }
+.kpick { padding: 2px 4px; }
+.kbadge { padding: 1px 8px; border-radius: 10px; border: 1px solid var(--border); font-size: 11px; }
+.kbadge::before { content: '●'; margin-right: 4px; }
+.kbadge.s-idle::before { color: var(--a2); }
+.kbadge.s-busy::before, .kbadge.s-starting::before, .kbadge.s-restarting::before { color: var(--a3); }
+.kbadge.s-dead::before, .kbadge.s-gone::before { color: var(--a1); }
+.kbadge.s-none::before { color: var(--muted); }
+.knote { font-size: 12px; color: var(--muted); max-width: 520px; }
+.knote.warn { color: var(--warn); }
+.knote code { padding: 0 4px; background: var(--note-bg); border-radius: 3px; color: var(--fg); font-size: 11px; user-select: all; }
 main.nb { max-width: 1180px; margin: 0 auto; padding: 14px 16px 60px; }
 .empty { color: var(--muted); padding: 24px 0; text-align: center; }
 .fail { max-width: 640px; margin: 15vh auto 0; padding: 0 20px; text-align: center; }
 .fail p { color: var(--muted); overflow-wrap: anywhere; }
 
 /* ---- rows: prompt column + body ---- */
-.cell { margin: 0 0 10px; }
+.cell { position: relative; margin: 0 0 10px; padding: 2px 0; border-left: 3px solid transparent; }
+.cell.sel { border-left-color: var(--sel-bar); background: var(--row-alt); }
+.cell .inrow .body { cursor: text; }
+.prompt.in.running { color: var(--a3); }
+.md-empty { color: var(--muted); font-style: italic; }
+.editor { min-width: 0; }
+.editor .cm-editor { max-height: 70vh; }
+/* cell toolbar: top-right of the selected cell */
+.ctools { position: absolute; top: -12px; right: 6px; z-index: 3; display: flex; gap: 3px; padding: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; }
+.ctools .tb { padding: 1px 6px; line-height: 1.4; }
+.ctools .tb[hidden] { display: none; }
+.empty .btn { margin-top: 10px; }
 .row { display: flex; gap: 10px; align-items: flex-start; }
 .prompt { flex: 0 0 74px; padding-top: 7px; text-align: right; font-size: 12px; line-height: 1.5; color: var(--muted); user-select: none; white-space: nowrap; }
 .prompt.in { color: var(--prompt-in); }

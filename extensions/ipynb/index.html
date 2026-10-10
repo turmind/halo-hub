@@ -2,9 +2,10 @@
 <html lang="en">
 <meta charset="utf-8">
 <!-- Notebooks are untrusted input and this frame shares the admin's origin (sandbox allow-same-origin), so besides
-     DOMPurify the page carries its own CSP: no inline scripts / handlers, no network (remote images are blocked and shown
-     as placeholders), no frames or forms. Inline styles stay allowed for pandas-style HTML outputs. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src data: blob:; font-src 'self'; base-uri 'none'; form-action 'none'">
+     DOMPurify the page carries its own CSP: no inline scripts / handlers, no frames or forms, and no network except
+     Halo's own origin (the Jupyter proxy, REST + WebSocket); remote images are blocked and shown as placeholders.
+     Inline styles stay allowed for pandas-style HTML outputs and CodeMirror's injected styles. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src data: blob:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
 <title>Jupyter Notebook</title>
 <link rel="stylesheet" href="vendor/katex/katex.min.css">
 <link rel="stylesheet" href="style.css">

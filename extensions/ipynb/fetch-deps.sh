@@ -10,12 +10,19 @@
 #   vendor/katex/katex.min.js   <- katex/dist/katex.min.js           (copied verbatim)
 #   vendor/katex/katex.min.css  <- katex/dist/katex.min.css with the .woff/.ttf fallbacks removed
 #   vendor/katex/fonts/*.woff2  <- katex/dist/fonts/*.woff2          (woff2 only: every browser halo supports reads it; -0.6 MB)
+#   vendor/codemirror.js        <- src/codemirror.js bundled by esbuild (ESM, minified): CodeMirror 6 + python, markdown,
+#                                  javascript / typescript, sql, r, julia, shell modes; app.js imports it on first edit
 set -euo pipefail
 
 MARKED_VERSION=15.0.12
 DOMPURIFY_VERSION=3.4.16
 HIGHLIGHTJS_VERSION=11.12.0
 KATEX_VERSION=0.19.0
+ESBUILD_VERSION=0.28.2
+# CodeMirror 6 packages (exact pins; transitive deps resolve from these)
+CM_PACKAGES="@codemirror/state@6.7.6 @codemirror/view@6.43.14 @codemirror/commands@6.11.1 @codemirror/language@6.13.1
+  @codemirror/autocomplete@6.20.3 @codemirror/lang-python@6.2.1 @codemirror/lang-markdown@6.5.2
+  @codemirror/lang-javascript@6.2.5 @codemirror/lang-sql@6.10.0 @codemirror/legacy-modes@6.5.5 @lezer/highlight@1.2.5"
 
 cd "$(dirname "$0")"
 tmp=$(mktemp -d)
@@ -24,7 +31,8 @@ trap 'rm -rf "$tmp"' EXIT
 (cd "$tmp" && npm init -y >/dev/null \
   && npm i --no-audit --no-fund --ignore-scripts \
        "marked@${MARKED_VERSION}" "dompurify@${DOMPURIFY_VERSION}" \
-       "@highlightjs/cdn-assets@${HIGHLIGHTJS_VERSION}" "katex@${KATEX_VERSION}")
+       "@highlightjs/cdn-assets@${HIGHLIGHTJS_VERSION}" "katex@${KATEX_VERSION}" \
+       "esbuild@${ESBUILD_VERSION}" ${CM_PACKAGES})
 
 nm="$tmp/node_modules"
 rm -rf vendor
@@ -40,5 +48,8 @@ cp "$nm"/katex/dist/fonts/*.woff2 vendor/katex/fonts/
 sed -E 's/,url\(fonts\/[^)]*\.woff\) format\("woff"\),url\(fonts\/[^)]*\.ttf\) format\("truetype"\)//g' \
   "$nm/katex/dist/katex.min.css" > vendor/katex/katex.min.css
 if grep -Eq '\.(woff|ttf)\b' vendor/katex/katex.min.css; then echo "katex.min.css still references woff/ttf" >&2; exit 1; fi
+cp src/codemirror.js "$tmp/codemirror.js"
+"$nm/.bin/esbuild" "$tmp/codemirror.js" --bundle --format=esm --minify --target=es2020 --legal-comments=none \
+  --outfile=vendor/codemirror.js
 
-echo "marked ${MARKED_VERSION}, dompurify ${DOMPURIFY_VERSION}, highlight.js ${HIGHLIGHTJS_VERSION}, katex ${KATEX_VERSION}"
+echo "marked ${MARKED_VERSION}, dompurify ${DOMPURIFY_VERSION}, highlight.js ${HIGHLIGHTJS_VERSION}, katex ${KATEX_VERSION}, codemirror bundle $(wc -c < vendor/codemirror.js) B"
