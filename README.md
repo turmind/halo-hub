@@ -33,13 +33,17 @@ dist/               Build output — packaged zips, not committed
 
 Model provider configs — the same yamls Halo bundles in `packages/server/templates/models/`, published here so a new model or a changed provider endpoint reaches users without a Halo release. All providers ship in one zip, `models-<YYYY.MM.DD>.zip`.
 
-- **Install / update**: `/extension models` (or tell the agent "update the model list"). It downloads the newest `models-v*` release and installs each yaml into `~/.halo/global/models.d/`; a running server picks it up without a restart. If a provider is new or its `defaultEndpoint` / `endpointPresets` change, the agent lists the changes and asks before applying. Only https GitHub / Gitea / Forgejo / GitLab hubs with releases are accepted.
+- **Install / update**: `/extension models` (or tell the agent "update the model list"). It downloads the newest `models-v*` release and installs each yaml into `~/.halo/global/models.d/`; a running server picks it up without a restart. If a provider is new, its `defaultEndpoint` / `endpointPresets` change, or a model's `endpoints:` gains a URL the provider didn't use anywhere yet, the agent lists the changes and asks before applying. Only https GitHub / Gitea / Forgejo / GitLab hubs with releases are accepted.
+- **Needs Halo ≥ 1.6.1**: 1.6.1 keeps existing agents on their effective verbosity / context, sends Doubao 2.1 Pro images, can switch Hunyuan thinking off, and honours per-model `endpoints:`. On 1.6.0, Mantle agents without `model.verbosity` move from low to medium, Haiku 5.5 agents without a `context:` block drop to a 100K window, Doubao images are dropped, and Hunyuan keeps thinking on.
 - **Revision rule**: every yaml carries `revision: YYYYMMDDNN` (an integer; `NN` = that day's sequence). Per provider id Halo uses the copy with the higher revision, and the hub copy on a tie. **Bump `revision` on every edit**, whether you edit the bundled copy in halo-agent or the hub copy here, or the edit loses to the other copy.
 - Halo refuses a provider whose `runtime:` it doesn't know (needs a newer Halo), one without `revision`, and one whose `secrets[].default` is anything but empty or an `<<ENV_NAME>>` placeholder. Never put credential values in these files.
 
 | ids | Revision |
 |---|---|
-| `anthropic` `aws-bedrock-claude-invoke` `aws-bedrock-mantle` `aws-bedrock-openai` `deepseek` `doubao` `hunyuan` `kimi` `mimo-token-plan-china` `minimax` `openai` `qwen` `zhipu` | `2026100501` |
+| `deepseek` `mimo-token-plan-china` `minimax` `zhipu` | `2026101002` |
+| `hunyuan` `qwen` | `2026101003` |
+| `kimi` | `2026101004` |
+| `anthropic` `aws-bedrock-claude-invoke` `aws-bedrock-mantle` `aws-bedrock-openai` `doubao` `openai` | `2026101005` |
 
 **Skills** (`skills/<id>/`, release tag `skill-<id>-v<version>`)
 
