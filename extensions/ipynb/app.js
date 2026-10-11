@@ -520,6 +520,7 @@ function load(buffer) {
   baseline = text;
   rev = baseRev = 0;
   show(nb, anchor);
+  tryResume();
 }
 
 // ---- editing ---------------------------------------------------------------------------------------------------------
@@ -802,6 +803,7 @@ async function initKernel() {
   ks.checking = false;
   renderKernel();
   renderTools();
+  tryResume();
 }
 kCheck.addEventListener('click', () => { if (!ks.checking) void initKernel(); });
 
@@ -841,9 +843,9 @@ function dropKernel() {
   ks.status = 'none';
 }
 
-function newKernel() {
+function newKernel(session) {
   const k = new Kernel({
-    projectId: jupyter.projectId, path: filePath, name: kernelName(),
+    projectId: jupyter.projectId, path: filePath, name: kernelName(), session,
     onStatus: (s) => {
       if (ks.kernel !== k) return;
       ks.status = s;
@@ -852,8 +854,9 @@ function newKernel() {
       renderKernel();
     },
     onMessage: (msg) => { if (ks.kernel === k) onKernelMessage(msg); },
-    // A new socket is a new Jupyter session: the reply to what was sent on the old one never comes. A kernel_info
-    // request queues behind the running cell on the shell channel, so its reply says that cell is finished.
+    // Halo ≥ 1.6.3 replays what the kernel sent meanwhile (same session_id); on older hosts a new socket is a new
+    // Jupyter session and the reply to what was sent on the old one never comes. A kernel_info request queues behind
+    // the running cell on the shell channel, so its reply says that cell is finished either way.
     onReconnect: () => { if (current && ks.kernel === k) current.sync = k.send('shell', 'kernel_info_request', {}); },
   });
   ks.kernel = k;
@@ -876,7 +879,7 @@ function runAll() {
 
 let starting = false;
 async function pump() {
-  if (current || starting || !queue.length) return;
+  if (current || starting || reattaching || !queue.length) return;
   if (ks.status === 'dead') return clearQueue(); // needs an explicit Restart
   if (!ks.kernel || ks.kernel.gone) {
     starting = true;
@@ -1007,8 +1010,89 @@ kRestart.addEventListener('click', async () => {
   renderKernel();
   try { await k.restart(); } catch (e) { await startFailed(e, t('restartFail', e.message)); }
 });
-// Best effort; the server also shuts a kernel down 60 s after its last socket closes.
-addEventListener('pagehide', () => ks.kernel?.shutdown());
+// ---- surviving a reload ----------------------------------------------------------------------------------------------
+// pagehide can't tell a reload (or closing and reopening the notebook tab) from leaving for good, so it only drops the
+// socket: the server shuts a kernel down 60 s after its last socket closes. The kernel, and the cell it is running, are
+// remembered in sessionStorage (per browser tab; the frame is same-origin with the admin) for the next page of this
+// notebook, which claims the entry on init and rejoins the kernel. A second pane opened meanwhile finds nothing.
+
+let resume = null; // the entry claimed on init, until the kernel status is known
+let reattaching = null; // that entry while reattach() waits for the socket
+const RESUME_MAX = 512 * 1024; // chars of one entry
+
+const resumeKey = () => `halo-ipynb-kernel:${jupyter.projectId}:${filePath}`;
+
+function claimResume() {
+  try {
+    const raw = sessionStorage.getItem(resumeKey());
+    sessionStorage.removeItem(resumeKey());
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function rememberKernel() {
+  if (!jupyter) return;
+  const pending = resume ?? reattaching; // reloaded again before the claimed entry was used: hand it on as it was
+  if (pending) { try { sessionStorage.setItem(resumeKey(), JSON.stringify(pending)); } catch { /* fresh start next */ } return; }
+  const k = ks.kernel;
+  if (!k?.id || k.gone || ks.status === 'dead') return;
+  const cur = current && cells.includes(current.c) ? current : null;
+  const run = cur && {
+    msgId: cur.msgId, cellId: cur.c.data.id ?? null, index: cells.indexOf(cur.c), source: str(cur.c.data.source),
+    count: cur.c.data.execution_count ?? null, outputs: cur.c.data.outputs ?? null,
+  };
+  const entry = () => JSON.stringify({ id: k.id, name: k.name, session: k.session, run });
+  let text = entry();
+  // The admin shares this storage: big outputs (images) are left out, the cell resumes without what it printed so far
+  if (text.length > RESUME_MAX && run) { run.outputs = null; text = entry(); }
+  try { sessionStorage.setItem(resumeKey(), text); } catch { /* storage unavailable: the next page starts a fresh kernel */ }
+}
+
+/** Once both the kernel check and the notebook are in: rejoin what the previous page of this notebook left. */
+function tryResume() {
+  if (!resume || !canRun() || !doc) return;
+  const r = resume;
+  resume = null;
+  void reattach(r);
+}
+
+/**
+ * Rejoin the remembered kernel. Anything that doesn't fit leaves today's fresh start on the next run: the server no
+ * longer has it, or it is another kernelspec than the notebook now asks for (picked before the reload, never saved).
+ */
+async function reattach(r) {
+  if (typeof r?.id !== 'string' || !/^[0-9a-f]{32}$/.test(r.session) || r.name !== kernelName() || ks.kernel) return;
+  reattaching = r; // runs queued meanwhile wait for the outcome (pump)
+  const k = newKernel(r.session);
+  const ok = await k.attach(r.id);
+  reattaching = null;
+  if (ks.kernel !== k) { k.close(); return; } // replaced meanwhile (kernel picked, file reloaded and run)
+  if (!ok) { ks.kernel = null; ks.status = 'none'; renderKernel(); return void pump(); }
+  const run = r.run;
+  const at = run && cells[run.index];
+  // by cell id (nbformat 4.5); without ids, the cell at the same index if its source is unchanged
+  const c = run && (run.cellId != null ? cells.find((x) => x.data?.id === run.cellId) : at && str(at.data.source) === run.source ? at : null);
+  if (c && kindOf(c.data) === 'code' && !c.running && typeof run.msgId === 'string') {
+    c.running = true;
+    if (Array.isArray(c.data.outputs)) {
+      // what the cell showed before the reload; what it printed since is replayed by the server (Halo ≥ 1.6.3)
+      c.data.outputs = Array.isArray(run.outputs) ? run.outputs : [];
+      if (run.count != null) setKey(c.data, 'execution_count', run.count);
+      changed();
+    }
+    // A kernel_info request queues behind the cell on the shell channel: its reply says the cell is done, also when
+    // the cell's own execute_reply went to the previous page (hosts that don't replay).
+    current = { c, msgId: run.msgId, reply: false, idle: false, status: null, clear: false, sync: k.send('shell', 'kernel_info_request', {}) };
+    paintPrompt(c);
+    paintOutputs(c);
+  }
+  // Jupyter sends no status to a new socket while the kernel is busy; an idle one answers the connect nudge itself.
+  ks.status = run ? 'busy' : 'idle';
+  renderKernel();
+  void pump();
+}
+
+addEventListener('pagehide', () => { rememberKernel(); ks.kernel?.close(); });
 
 // Repaint a cell's outputs / prompt without touching its input (an editor there keeps focus), once per frame.
 const pendingPaint = new Set();
@@ -1048,7 +1132,7 @@ addEventListener('message', (e) => {
   if (m.type === 'init') {
     setTheme(m.theme);
     filePath = m.file?.path ?? null;
-    if (m.jupyter?.projectId && filePath && !jupyter) { jupyter = m.jupyter; void initKernel(); }
+    if (m.jupyter?.projectId && filePath && !jupyter) { jupyter = m.jupyter; resume = claimResume(); void initKernel(); }
     setLang(m.lang);
   } else if (m.type === 'theme') setTheme(m.theme);
   else if (m.type === 'lang') setLang(m.lang);

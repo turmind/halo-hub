@@ -2,15 +2,16 @@
 
 Halo Canvas preview extension: opens `.ipynb` files the way Jupyter / GitHub show them, lets you **edit and save** the cells, and — on a Halo server that has Jupyter — **run** them on a kernel. Rendering and editing are fully **offline**: marked, DOMPurify, highlight.js, KaTeX (with its fonts) and CodeMirror 6 are bundled, nothing is fetched from a CDN. The view refreshes when the file changes on disk (e.g. the agent edits the JSON) while there are no unsaved edits; scroll position is kept.
 
-| | Halo 1.6.0 | Halo ≥ 1.6.1 |
-|---|---|---|
-| View, edit, save | ✓ | ✓ |
-| Run cells | — (no run controls) | ✓ when the server has Jupyter |
+| | Halo 1.6.0 | Halo 1.6.1 – 1.6.2 | Halo ≥ 1.6.3 |
+|---|---|---|---|
+| View, edit, save | ✓ | ✓ | ✓ |
+| Run cells | — (no run controls) | ✓ when the server has Jupyter | ✓ |
+| A run survives a page reload | — | ✓, output printed during the reload is lost | ✓, with that output |
 
 ## Install
 
 - Agent: `/extension install ipynb`
-- Admin → Extensions → upload `ipynb-2.0.0.zip` (from the GitHub release)
+- Admin → Extensions → upload `ipynb-2.0.1.zip` (from the GitHub release)
 - Manual: `cp -r extensions/ipynb ~/.halo/global/extensions/`
 
 Priority is `default`, so a `.ipynb` opens in this extension; "Open as Text" in the preview header still shows the raw JSON.
@@ -37,7 +38,8 @@ If `jupyter` is not on the service's PATH, set its full path in **Settings → `
 
 **In the notebook header**: kernel picker (the notebook's own `kernelspec` when the server has it, else the server default; picking another one writes `metadata.kernelspec`), status badge (no kernel / starting / idle / busy / restarting / dead / shut down), **Run all**, **Interrupt**, **Restart**.
 
-- The kernel starts on the first run, in the notebook's folder (`os.getcwd()` = that folder), and shuts down when the tab closes (the server also stops it 60 s after its last connection drops, and stops kernels idle for an hour).
+- The kernel starts on the first run, in the notebook's folder (`os.getcwd()` = that folder). The server shuts it down 60 s after its last connection drops (tab closed), and stops kernels idle for an hour.
+- **Reload** (the browser or desktop app, or closing and reopening the notebook tab) within those 60 s rejoins the same kernel: variables are kept, a running cell shows `In [*]` and the busy badge again, its output keeps streaming in, and it ends with its count and idle state. On Halo 1.6.3+ the output printed during the reload is replayed; on 1.6.1 – 1.6.2 that part is missing. Later than 60 s, the next run starts a new kernel. This is per browser tab (`sessionStorage`); another tab or browser starts its own kernel.
 - Cells run in order through a queue; `In [*]` marks queued / running cells. An error stops the rest of the queue (like Jupyter's Run all).
 - Outputs (streams, errors with ANSI colors, rich `display_data` / `execute_result`, `clear_output`, display updates) are stored in nbformat shape and make the notebook dirty — save to keep them.
 - A dropped connection is retried 3 times (1 / 2 / 4 s); after that the badge shows dead and **Restart** starts it again. A kernel the server shut down (idle) shows "shut down"; the next run or Restart starts a new one.
@@ -70,7 +72,7 @@ Notebooks are untrusted input and the frame shares the admin's origin (sandbox `
 ## Package
 
 ```bash
-node scripts/pack.mjs extensions/ipynb   # → dist/ipynb-2.0.0.zip
+node scripts/pack.mjs extensions/ipynb   # → dist/ipynb-2.0.1.zip
 ```
 
 Third-party files in `vendor/` are committed; `./fetch-deps.sh` regenerates them from the pinned npm versions (KaTeX fonts: woff2 only, which every browser Halo supports reads; `vendor/codemirror.js` is built from `src/codemirror.js` with esbuild). `src/` and `fetch-deps.sh` are not in the release zip. Licenses: see `LICENSE` and `NOTICE`.

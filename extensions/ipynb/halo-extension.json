@@ -1,8 +1,8 @@
 {
   "id": "ipynb",
   "name": "Jupyter Notebook",
-  "version": "2.0.0",
-  "description": "Jupyter notebooks: render, edit and save cells offline; run them on a Jupyter kernel through the Halo server (1.6.1+).",
+  "version": "2.0.1",
+  "description": "Jupyter notebooks: render, edit and save cells offline; run them on a Jupyter kernel through the Halo server (1.6.1+; runs survive a page reload, output during it kept on 1.6.3+).",
   "extensions": [".ipynb"],
   "entry": "index.html",
   "priority": "default",

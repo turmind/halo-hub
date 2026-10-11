@@ -29,10 +29,11 @@ const hex = (n) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.t
 
 export class Kernel {
   /**
-   * @param {{ projectId: string, path: string, name: string,
+   * @param {{ projectId: string, path: string, name: string, session?: string,
    *   onStatus: (s: 'starting'|'idle'|'busy'|'restarting'|'dead'|'gone') => void,
    *   onMessage: (msg: object) => void, onReconnect: () => void }} opts
    * 'restarting' = the kernel died and Jupyter is restarting it; 'gone' = shut down upstream (idle cull), id is dead.
+   * `session`: the Jupyter session of a kernel this tab used before a reload (see attach()).
    */
   constructor(opts) {
     this.opts = opts;
@@ -42,9 +43,11 @@ export class Kernel {
     this.outbox = [];
     this.tries = 0;
     this.closed = false;
-    this.session = hex(16);
+    this.session = opts.session ?? hex(16);
+    this.tag = hex(4); // per page: a reattached session replays replies to the previous page's msg ids
     this.seq = 0;
     this.ready = null; // promise of the started kernel (shared by everything queued before it is up)
+    this.attached = null; // attach()'s resolver until its first socket opens or fails
   }
 
   /** Start the kernel once; resolves when its id is known (messages sent before the socket opens wait in outbox). */
@@ -59,15 +62,29 @@ export class Kernel {
     return this.ready;
   }
 
+  /**
+   * Rejoin a kernel this tab started before a reload (the server keeps it for 60 s without a socket). Resolves true
+   * once the socket is open, false when it can't open: the browser hides the handshake status, but an id the server
+   * no longer knows (grace over, server restarted) is by far the likeliest reason, and a fresh kernel is the fallback.
+   */
+  attach(id) {
+    this.id = id;
+    this.ready = Promise.resolve();
+    return new Promise((resolve) => { this.attached = resolve; this.connect(); });
+  }
+
   connect() {
     if (this.closed) return;
-    // The server nudges every new connection with kernel_info, so a status busy → idle pair tells us the state.
-    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${API}/channels?kernel=${encodeURIComponent(this.id)}`);
+    // The server nudges every new connection with kernel_info, so a status busy → idle pair tells us the state (not
+    // while the kernel is busy: jupyter skips the nudge then). session_id: Halo ≥ 1.6.3 passes it on, and jupyter
+    // replays what the kernel sent while this session had no socket (older hosts ignore it).
+    const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${API}/channels?kernel=${encodeURIComponent(this.id)}&session_id=${this.session}`);
     const again = this.tries > 0;
     this.ws = ws;
     ws.onopen = () => {
       this.tries = 0;
       for (const m of this.outbox.splice(0)) ws.send(m);
+      if (this.attached) { this.attached(true); this.attached = null; }
       if (again) this.opts.onReconnect();
     };
     ws.onmessage = (e) => {
@@ -82,6 +99,7 @@ export class Kernel {
     };
     ws.onclose = (e) => {
       if (this.closed || this.ws !== ws) return;
+      if (this.attached) { this.close(); return; }
       // 1000 = the proxy saw the kernel shut down upstream (culled): its id is gone, only a new kernel helps.
       if (e.code === 1000) { this.ws = null; this.gone = true; this.opts.onStatus('gone'); return; }
       if (this.tries < RECONNECTS) { setTimeout(() => { if (this.ws === ws) this.connect(); }, 1000 * 2 ** this.tries++); return; }
@@ -92,7 +110,7 @@ export class Kernel {
 
   /** Send a request; returns its msg_id (replies and iopub messages carry it as parent_header.msg_id). */
   send(channel, msgType, content) {
-    const msgId = `${this.session}_${++this.seq}`;
+    const msgId = `${this.session}_${this.tag}_${++this.seq}`;
     const frame = JSON.stringify({
       header: { msg_id: msgId, msg_type: msgType, username: 'halo', session: this.session, date: new Date().toISOString(), version: '5.3' },
       parent_header: {}, metadata: {}, content, buffers: [], channel,
@@ -126,10 +144,16 @@ export class Kernel {
     return this.start();
   }
 
-  /** Best effort; the server also shuts a kernel down 60 s after its last socket closes. */
-  shutdown() {
+  /** Drop the socket only; the kernel stays up for the server's 60 s grace (a reload rejoins it with attach()). */
+  close() {
     this.closed = true;
     this.ws?.close();
+    if (this.attached) { this.attached(false); this.attached = null; }
+  }
+
+  /** Best effort; the server also shuts a kernel down 60 s after its last socket closes. */
+  shutdown() {
+    this.close();
     if (this.id && !this.gone) api('DELETE', `/kernels/${encodeURIComponent(this.id)}`, null, true).catch(() => {});
   }
 }
