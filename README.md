@@ -40,10 +40,10 @@ Model provider configs — the same yamls Halo bundles in `packages/server/templ
 
 | ids | Revision |
 |---|---|
-| `deepseek` `mimo-token-plan-china` `minimax` `zhipu` | `2026101002` |
-| `hunyuan` `qwen` | `2026101003` |
+| `mimo-token-plan-china` `minimax` `zhipu` | `2026101002` |
 | `kimi` | `2026101004` |
 | `anthropic` `aws-bedrock-claude-invoke` `aws-bedrock-mantle` `aws-bedrock-openai` `doubao` `openai` | `2026101005` |
+| `deepseek` `hunyuan` `qwen` | `2026101101` |
 
 **Skills** (`skills/<id>/`, release tag `skill-<id>-v<version>`)
 
