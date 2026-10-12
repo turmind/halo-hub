@@ -1,6 +1,6 @@
 # Model provider census: where to look and how to probe
 
-The maintainer runbook for refreshing the 13 provider yamls in this folder.
+The maintainer runbook for refreshing the 14 provider yamls in this folder.
 Halo's bundled copies (`packages/server/templates/models/` in halo-agent) must
 stay byte-identical with these. `scripts/pack.mjs models` and `halo models install`
 read only `*.yaml`, so this file never ships in a release zip.
@@ -12,6 +12,7 @@ read only `*.yaml`, so this file never ships in a release zip.
 | `aws-bedrock-claude-invoke` · `aws-bedrock-mantle` · `aws-bedrock-openai` | Bedrock InvokeModel / Mantle Responses / Mantle chat | model cards: docs.aws.amazon.com/bedrock/latest/userguide/model-cards.html | docs.aws.amazon.com/bedrock/latest/userguide/model-lifecycle.html (Active / Legacy + EOL) | `aws bedrock list-foundation-models --region <r>` → `modelLifecycle.status`; run it for every region in `endpointPresets` |
 | `deepseek` | OpenAI chat + `reasoning_effort` | api-docs.deepseek.com/quick_start/pricing · /updates · /guides/thinking_mode (effort levels + how the API folds the others) | api-docs.deepseek.com/updates | `GET https://api.deepseek.com/models` |
 | `doubao` | OpenAI chat + `thinking:{type}` | model list: `https://www.volcengine.com/api/doc/getDocDetail?LibraryID=82379&DocumentID=1330310&type=online` · release notes: `…&DocumentID=1159178…` (JSON; read `Result.MDContent`; the HTML pages render by script) | `…&DocumentID=1350667…` (模型下线公告: EOM / EOS per batch) | `GET https://ark.cn-beijing.volces.com/api/v3/models` → `status` (`Retiring` / `Shutdown`) + `token_limits` (context / max input / max output) |
+| `gemini` | OpenAI chat (`/v1beta/openai`) via the `gemini` runtime (thought signatures, tool-call `stop`) | ai.google.dev/gemini-api/docs/models · /docs/thinking (levels per model) · /docs/changelog | ai.google.dev/gemini-api/docs/deprecations | `GET https://generativelanguage.googleapis.com/v1beta/models` → `inputTokenLimit` / `outputTokenLimit` |
 | `hunyuan` | OpenAI chat + `reasoning_effort` | TokenHub model list cloud.tencent.com/document/product/1823/130051 (context / max input / max output per model) · release posts on tencent.com; HF `tencent/Hy*-preview` `config.json` (`max_position_embeddings`) | cloud.tencent.com/document/product/1729/131925 (fetch with `curl --compressed`; the page is served gzipped) | `GET https://tokenhub.tencentmaas.com/v1/models` → `status` (`online`); a model that drops off the list may still answer |
 | `kimi` | OpenAI chat | platform.moonshot.cn/docs/models · per-model quickstart pages | the same models page ("已下线 / 将下线") | `GET https://api.moonshot.cn/v1/models` (also returns context length and supported efforts) |
 | `minimax` | Anthropic Messages | platform.minimaxi.com/docs/guides/models-intro ("历史模型" = older generation) | the same page | `GET https://api.minimaxi.com/v1/models` |
