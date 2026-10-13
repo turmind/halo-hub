@@ -29,6 +29,7 @@ dist/               Build output — packaged zips, not committed
 | `megadrive` | `.mega` (folder) | — | Offline Mega Drive / Genesis (+ Master System / Game Gear) emulator, EmulatorJS + Genesis Plus GX (~1.5 MB zip). The folder holds `game.json` (which ROM, anywhere on the machine — `.zip` `.7z` `.md` `.gen` `.smd` `.bin` `.sms` `.gg`, read in place, never copied — and the display filter) and `saves/`; keyboard, gamepad, touch stick; two players (keyboard + gamepad or two gamepads); non-commercial core license, no ROMs; release-zip install only |
 | `arcade` | `.arcade` (folder) | — | Offline arcade emulator, EmulatorJS + FinalBurn Neo (~8.5 MB zip). The folder holds `game.json` (which romset, anywhere on the machine — an unmodified `.zip` named after the set, read in place, never copied; parent / BIOS zips such as `neogeo.zip` are picked up from the same folder — and the display filter) and `saves/`; keyboard, gamepad, touch stick; two players (keyboard + gamepad or two gamepads); FBNeo licence forbids any commercial use, no ROMs; release-zip install only |
 | `halo-city` | — (activity-bar entry) | — | Live pixel city of the server; needs Halo ≥ 1.6.5 |
+| `voice-input` | — (chat-bar button) | — | Dictation into the chat box, inserted at the cursor and never sent. Transcribed on your own Halo server (SenseVoice-Small, FunASR Model License; zh / en / yue / ja / ko). Needs Halo ≥ 1.6.5; the server downloads ~240 MB of model files on first use |
 
 **Models** (`models/<id>.yaml`, release tag `models-v<YYYY.MM.DD>`)
 

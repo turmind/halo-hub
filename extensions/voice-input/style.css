@@ -1,0 +1,80 @@
+/* Palette = the host's theme tokens (--halo-<token>, set from init/theme `themeVars`), falling back to built-in values
+   for hosts that don't send them. data-theme (light | dark, the host's brightness verdict) only picks the fallbacks. */
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: var(--halo-background, #0a0a0a); --fg: var(--halo-foreground, #e6e6e6); --muted: var(--halo-muted-foreground, #8b8b93);
+  --border: var(--halo-border, #2b2b30); --btn-bg: var(--halo-secondary, #1a1a1d); --btn-hover: var(--halo-accent, #26262a);
+  --primary: var(--halo-primary, #2f6fed); --primary-fg: var(--halo-primary-foreground, #fff);
+  --ring: var(--halo-ring, #6cb6ff); --rec: var(--halo-destructive, #ff5d5d);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: var(--halo-background, #ffffff); --fg: var(--halo-foreground, #1f2328); --muted: var(--halo-muted-foreground, #656d76);
+  --border: var(--halo-border, #d8dee4); --btn-bg: var(--halo-secondary, #f3f4f6); --btn-hover: var(--halo-accent, #e8eaed);
+  --primary: var(--halo-primary, #0969da); --primary-fg: var(--halo-primary-foreground, #fff);
+  --ring: var(--halo-ring, #0969da); --rec: var(--halo-destructive, #d1242f);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body { background: var(--bg); color: var(--fg); font: 12px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif; }
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; }
+button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+#app { position: relative; display: flex; flex-direction: column; height: 100%; padding: 10px 12px 8px; gap: 8px; }
+
+.main { display: flex; align-items: center; gap: 12px; min-height: 0; }
+.info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding-right: 18px; }
+.status { font-size: 13px; color: var(--fg); overflow-wrap: anywhere; }
+.status.err { color: var(--rec); }
+.sub { color: var(--muted); overflow-wrap: anywhere; }
+
+/* The big record button: primary mic when idle, red stop square while recording, ring follows the input level. */
+.rec { --lvl: 0; position: relative; flex: none; width: 60px; height: 60px; border-radius: 50%; border: 0; cursor: pointer;
+  display: grid; place-items: center; background: var(--primary); color: var(--primary-fg); transition: background .15s, opacity .15s; }
+.rec:hover:not(:disabled) { opacity: .9; }
+.rec:disabled { cursor: default; opacity: .6; }
+.rec svg { grid-area: 1 / 1; width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.rec .i-stop { display: none; fill: currentColor; stroke: none; }
+.rec .spin { grid-area: 1 / 1; display: none; width: 26px; height: 26px; border: 2.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+.rec[data-phase="recording"], .rec[data-phase="waiting"], .rec[data-phase="finishing"] { background: var(--rec); color: #fff; }
+.rec[data-phase="recording"] .i-mic, .rec[data-phase="waiting"] .i-mic { display: none; }
+.rec[data-phase="recording"] .i-stop, .rec[data-phase="waiting"] .i-stop { display: block; }
+.rec[data-phase="starting"] .i-mic, .rec[data-phase="finishing"] .i-mic { display: none; }
+.rec[data-phase="starting"] .spin, .rec[data-phase="finishing"] .spin { display: block; }
+.rec[data-phase="recording"]::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; pointer-events: none;
+  border: 3px solid color-mix(in srgb, var(--rec) 45%, transparent); transform: scale(calc(1 + var(--lvl) * .18)); transition: transform 60ms linear; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.barrow { display: flex; align-items: center; gap: 8px; }
+.bar { flex: 1 1 auto; height: 6px; border-radius: 3px; background: var(--btn-bg); border: 1px solid var(--border); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--primary); }
+.bar.level i { background: var(--rec); transition: width 60ms linear; }
+.bar.dl i { transition: width .3s; }
+.timer { flex: none; font-variant-numeric: tabular-nums; font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--muted); }
+.mic { max-width: 100%; align-self: flex-start; font: inherit; font-size: 11px; color: var(--muted); background: var(--btn-bg);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; }
+
+.recent { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 1px; color: var(--muted);
+  border-top: 1px solid var(--border); padding-top: 4px; overflow: hidden; }
+.recent:empty { border-top-color: transparent; }
+.recent .line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.about-btn { position: absolute; top: 4px; right: 6px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none;
+  color: var(--muted); font-size: 14px; line-height: 20px; cursor: pointer; }
+.about-btn:hover { color: var(--fg); background: var(--btn-hover); }
+
+/* About / license: an overlay inside the panel, scrollable. */
+.overlay { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); z-index: 1; }
+.ov-bar { flex: none; display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 6px; border-bottom: 1px solid var(--border); }
+.ov-title { flex: 1 1 auto; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-close { flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--muted); font-size: 15px; line-height: 20px; cursor: pointer; }
+.ov-close:hover { color: var(--fg); background: var(--btn-hover); }
+.ov-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 10px; }
+.row { display: grid; grid-template-columns: max-content 1fr; column-gap: 10px; margin-bottom: 6px; }
+.row .k { grid-column: 1; color: var(--muted); }
+.row .v { grid-column: 2; overflow-wrap: anywhere; }
+.row .link { font-size: 11px; color: var(--muted); }
+.url { color: var(--primary); user-select: text; }
+.textbtn { padding: 0; border: 0; background: none; color: var(--primary); cursor: pointer; text-decoration: underline; }
+.note { margin: 4px 0 0; color: var(--muted); }
+.license { margin: 0; white-space: pre-wrap; font: 11px/1.5 ui-monospace, Menlo, Consolas, monospace; }

@@ -1,0 +1,18 @@
+{
+  "id": "voice-input",
+  "name": "Voice Input",
+  "version": "1.0.0",
+  "description": "Dictate into the chat box: speech is transcribed on your own Halo server (SenseVoice, zh / en / yue / ja / ko) and inserted at the cursor. Never sends.",
+  "extensions": [],
+  "entry": "index.html",
+  "capabilities": ["media", "stt-local"],
+  "chatbar": {
+    "icon": "icon.svg",
+    "title": "Voice input",
+    "title_zh": "语音输入",
+    "height": 160
+  },
+  "platforms": ["web", "desktop-mac", "desktop-win"],
+  "homepage": "https://github.com/turmind/halo-hub/tree/main/extensions/voice-input",
+  "license": "MIT"
+}
