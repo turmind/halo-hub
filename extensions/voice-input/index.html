@@ -9,17 +9,22 @@
 <link rel="stylesheet" href="style.css">
 <div id="app">
   <section class="main">
-    <button id="rec" class="rec" type="button">
-      <svg class="i-mic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
-      <svg class="i-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
-      <span class="spin" aria-hidden="true"></span>
-    </button>
+    <span id="ind" class="ind" aria-hidden="true">
+      <svg class="i-mic" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>
+      <span class="spin"></span>
+    </span>
     <div class="info">
-      <div id="status" class="status" role="status"></div>
+      <div class="head">
+        <span id="status" class="status" role="status"></span>
+        <span id="timer" class="timer" hidden>0:00</span>
+      </div>
+      <div id="levelRow" class="bar level" hidden><i id="level"></i></div>
+      <div id="dlRow" class="bar dl" hidden><i id="dl"></i></div>
       <div id="sub" class="sub" hidden></div>
-      <div id="levelRow" class="barrow" hidden><div class="bar level"><i id="level"></i></div><span id="timer" class="timer">0:00</span></div>
-      <div id="dlRow" class="barrow" hidden><div class="bar dl"><i id="dl"></i></div></div>
-      <select id="mic" class="mic" hidden></select>
+      <div class="actions">
+        <button id="act" class="act" type="button" hidden></button>
+        <select id="mic" class="mic" hidden></select>
+      </div>
     </div>
     <button id="aboutBtn" class="about-btn" type="button">ⓘ</button>
   </section>

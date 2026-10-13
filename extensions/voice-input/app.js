@@ -1,6 +1,9 @@
 // Voice Input — see README.md. Mic -> AudioWorklet (pcm-worklet.js, 16 kHz mono s16le) -> the Halo server's on-device
 // speech-to-text WebSocket (/api/stt/stream). Every `final` is inserted at the chat-box caret with `insert-text`.
 // The protocol has no frame that sends a message: the user always presses Send.
+// One click: the host mounts this panel from the toolbar button and recording starts on `init`. While a recording has
+// audio in flight we report `busy`, so closing the panel (toolbar button again, ×, Esc) arrives as `close-request`:
+// stop, let the last sentences land in the draft, then `busy:false` and the host unmounts us.
 
 const post = (m) => parent.postMessage({ haloExt: 1, ...m }, '*');
 const $ = (id) => document.getElementById(id);
@@ -9,7 +12,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const LS = 'halo-ext-voice-input:'; // the iframe shares the admin's origin, so its localStorage too
 /** After `end`, how long to wait for the server's last finals + close 1000 before giving up. */
-const FINISH_TIMEOUT_MS = 30000;
+const FINISH_TIMEOUT_MS = 30000; // < the host's 35 s close-request deadline
+/** How long a suspended AudioContext gets to resume before we fall back to a "click to start" button. */
+const RESUME_WAIT_MS = 1000;
 /** A segment ending in a Han / kana character or CJK / full-width punctuation joins the next one without a space.
  *  Hangul is left out on purpose: Korean separates words with spaces, so it gets the joiner space like English. */
 const CJK_END = /[\u2e80-\u9fff\uf900-\ufaff\ufe30-\ufe4f\uff00-\uffef\u{20000}-\u{3ffff}]$/u;
@@ -26,13 +31,15 @@ const URLS = {
 
 const T = {
   en: {
-    start: 'Start dictation', stop: 'Stop',
-    idle: 'Click the button and speak', idleSub: 'Text goes into the chat box at the cursor. You send it.',
+    stop: 'Stop', resume: 'Resume', retry: 'Retry', startRec: 'Start recording',
+    stopped: 'Stopped',
+    needClick: 'The browser needs a click before it can record.',
     starting: 'Opening the microphone…', connecting: 'Connecting to the speech service…',
     preparing: 'First use: preparing the speech model download (about 240 MB)…',
     downloading: (p) => `First use: downloading the speech model ${p}% (about 240 MB)`,
-    waitHint: 'Start speaking once it’s ready; audio before that is not kept.',
-    loadingEngine: 'Loading the speech engine…', listening: 'Listening… click to stop',
+    waitHint: 'Recording starts by itself once it’s ready; anything said before that isn’t recognized.',
+    loadingEngine: 'Loading the speech engine…', listening: 'Listening…',
+    listenHint: 'Click the toolbar mic again to stop. You send the text yourself.',
     finishing: 'Recognizing…',
     errModel: 'The speech model failed to download. It will retry the next time you open this.',
     errEngine: (m) => `The on-device speech engine is unavailable: ${m}`,
@@ -56,13 +63,15 @@ const T = {
     viewLicense: 'View the license text', loading: 'Loading…', loadFailed: (m) => `Cannot load the license text: ${m}`,
   },
   zh: {
-    start: '开始语音输入', stop: '停止',
-    idle: '点击按钮开始说话', idleSub: '文字插到输入框光标处，由你自己发送',
+    stop: '停止', resume: '继续', retry: '重试', startRec: '开始录音',
+    stopped: '已停止',
+    needClick: '浏览器要求先点一下才能录音',
     starting: '正在打开麦克风…', connecting: '正在连接语音服务…',
     preparing: '首次使用，正在准备下载语音模型（约 240MB）…',
     downloading: (p) => `首次使用，正在下载语音模型 ${p}%（约 240MB）`,
-    waitHint: '就绪后再开始说话，之前的声音不会保留',
-    loadingEngine: '正在加载语音引擎…', listening: '正在听… 再点一下停止',
+    waitHint: '就绪后自动开始录音，在此之前说的话不会被识别',
+    loadingEngine: '正在加载语音引擎…', listening: '正在听…',
+    listenHint: '再点一下工具栏的麦克风停止，文字由你自己发送',
     finishing: '正在识别…',
     errModel: '语音模型下载失败，下次打开会重试',
     errEngine: (m) => `本机语音引擎不可用：${m}`,
@@ -91,28 +100,47 @@ const t = (k, ...a) => { const v = T[lang][k] ?? T.en[k]; return typeof v === 'f
 
 // ---- state -------------------------------------------------------------------------------------------------------------
 
-/** idle | starting (getUserMedia + audio graph) | waiting (WS open, before `ready`) | recording | finishing (after `end`) */
-let phase = 'idle';
-/** The current recording: { stream, ctx, an, node, ws, opened, ready, startedAt, raf, err, closing, finishTimer }. */
+/** idle | starting (getUserMedia + audio graph) | waiting (WS open, before `ready`) | recording | finishing (after `end`).
+ *  Starts as `starting`: the chat-bar `init` that auto-starts the recording is on its way. */
+let phase = 'starting';
+/** The current recording: { stream, ctx, an, node, ws, opened, ready, startedAt, raf, err, closing, finishTimer, restart }. */
 let rec = null;
 /** Latest `model` frame while waiting; null = nothing heard yet. */
 let model = null;
-/** Error shown in idle, as a thunk so a `lang` frame re-translates it. */
+/** Why we're idle, as a thunk so a `lang` frame re-translates it: an error, or the autoplay fallback. Null = stopped. */
 let notice = null;
+/** Idle because the AudioContext stayed suspended (autoplay policy): offer a plain "start" button, not "retry". */
+let needGesture = false;
 /** Last segment inserted by this recording, for the joiner. Reset on every start: the caret may have moved since. */
 let lastText = '';
 const recent = [];
+/** The host's `init` is re-sent on every `ready`; recording auto-starts once per iframe. */
+let autoStarted = false;
+/** The host asked to close (`close-request`): when back to idle, say `busy:false` and stay idle (no auto anything). */
+let closing = false;
+/** Last `busy` reported to the host; only changes are posted. */
+let busySent = false;
+
+/** `busy` = closing the panel now would lose audio already sent: true exactly while recording / finishing. */
+function setPhase(next) {
+  phase = next;
+  const busy = phase === 'recording' || phase === 'finishing';
+  if (busy !== busySent) { busySent = busy; post({ type: 'busy', busy }); }
+  render();
+}
 
 function render() {
-  const btn = $('rec');
-  btn.dataset.phase = phase;
-  btn.disabled = phase === 'starting' || phase === 'finishing';
-  btn.title = btn.ariaLabel = t(phase === 'idle' ? 'start' : 'stop');
-  let status = '', sub = '';
+  const ind = $('ind');
+  ind.dataset.phase = phase;
+  let status = '', sub = '', act = '';
   const dl = phase === 'waiting' && (model?.state === 'downloading' || model?.state === 'missing');
-  if (phase === 'idle') { if (notice) status = notice(); else { status = t('idle'); sub = t('idleSub'); } }
-  else if (phase === 'starting') status = t('starting');
+  if (phase === 'idle') {
+    if (needGesture) { status = t('needClick'); act = 'startRec'; }
+    else if (notice) { status = notice(); act = 'retry'; }
+    else { status = t('stopped'); act = 'resume'; }
+  } else if (phase === 'starting') status = t('starting');
   else if (phase === 'waiting') {
+    act = 'stop';
     if (!model) status = t('connecting');
     else if (model.state === 'downloading') {
       const p = model.total ? Math.min(100, Math.floor((model.received / model.total) * 100)) : 0;
@@ -122,15 +150,21 @@ function render() {
     } else if (model.state === 'missing') { status = t('preparing'); sub = t('waitHint'); $('dl').style.width = '0%'; }
     else if (model.state === 'error') status = t('errModel'); // the `error` frame + close 1011 follow at once
     else status = t('loadingEngine');
-  } else if (phase === 'recording') status = t('listening');
+  } else if (phase === 'recording') { status = t('listening'); sub = t('listenHint'); act = 'stop'; }
   else status = t('finishing');
+  if (closing || (phase === 'idle' && !navigator.mediaDevices)) act = ''; // being unmounted / retry can't help
+  ind.classList.toggle('err', phase === 'idle' && !!notice && !needGesture);
   $('status').textContent = status;
-  $('status').classList.toggle('err', phase === 'idle' && !!notice);
+  $('status').classList.toggle('err', phase === 'idle' && !!notice && !needGesture);
   $('sub').textContent = sub;
   $('sub').hidden = !sub;
   $('dlRow').hidden = !dl;
   $('levelRow').hidden = phase !== 'recording';
-  $('mic').hidden = phase !== 'idle' || $('mic').options.length < 3; // "Default" + at least two devices
+  $('timer').hidden = phase !== 'recording';
+  $('act').hidden = !act;
+  if (act) { $('act').textContent = t(act); $('act').dataset.act = act; }
+  // Device picker ("Default" + at least two devices): while idle, or to switch mid-recording (restarts on the new one).
+  $('mic').hidden = closing || (phase !== 'idle' && phase !== 'recording') || $('mic').options.length < 3;
 }
 
 function renderRecent() {
@@ -152,24 +186,49 @@ function sttError(m) {
   return () => t('errOther', m.message || m.code);
 }
 
+/** Back to idle from any phase (`rec` already torn down). A pending close-request is answered by setPhase's busy:false;
+ *  a device switch (`restart`) starts the next recording right away. */
+function toIdle(why, restart = false) {
+  rec = null; model = null; notice = why; needGesture = false;
+  setPhase('idle');
+  if (restart && !closing) start();
+}
+
 async function start() {
-  if (!navigator.mediaDevices?.getUserMedia) { notice = () => t('noMedia'); render(); return; }
-  notice = null; model = null; lastText = ''; phase = 'starting'; render();
+  if (rec || closing) return;
+  if (!navigator.mediaDevices?.getUserMedia) { notice = () => t('noMedia'); setPhase('idle'); return; }
+  notice = null; needGesture = false; model = null; lastText = '';
+  setPhase('starting');
   const r = rec = {};
   try {
+    // Created (and resumed) before any await, so on the fallback "start" click it is still inside the gesture.
+    // Auto-started from `init`, the panel mounted right after the toolbar click and is same-origin, so it normally has
+    // the page's user activation and runs. If an autoplay policy still holds it suspended (a risk on Safari / iOS),
+    // resume() won't settle without a gesture: we fall back to a "start" button below, without reporting busy.
+    const ctx = r.ctx = new AudioContext();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     // Before the first grant the list has no ids, so fall back to the remembered one; `ideal` = a device that's gone
     // falls back to the default instead of failing.
     const id = $('mic').value || localStorage.getItem(`${LS}mic`) || '';
     r.stream = await navigator.mediaDevices.getUserMedia({ audio: { ...(id ? { deviceId: { ideal: id } } : {}), echoCancellation: true, noiseSuppression: true } });
   } catch (e) {
-    rec = null; phase = 'idle'; notice = micError(e); render();
+    teardown(r);
+    if (rec === r) toIdle(micError(e));
     return;
   }
+  if (rec !== r) { stopAudio(r); return; } // stopped meanwhile
   refreshDevices(); // labels are available now
   try {
-    const ctx = r.ctx = new AudioContext();
+    const ctx = r.ctx;
+    if (ctx.state === 'suspended') await Promise.race([ctx.resume(), sleep(RESUME_WAIT_MS)]);
+    if (rec !== r) { teardown(r); return; }
+    if (ctx.state === 'suspended') {
+      teardown(r);
+      rec = null; model = null; notice = null; needGesture = true;
+      setPhase('idle');
+      return;
+    }
     await ctx.audioWorklet.addModule('pcm-worklet.js');
-    await ctx.resume();
     const src = ctx.createMediaStreamSource(r.stream);
     r.an = ctx.createAnalyser();
     r.an.fftSize = 1024;
@@ -183,12 +242,13 @@ async function start() {
     src.connect(r.an);
     src.connect(r.node);
   } catch (e) {
-    teardown(r); rec = null; phase = 'idle'; notice = () => t('micFailed', e?.message || String(e)); render();
+    teardown(r);
+    if (rec === r) toIdle(() => t('micFailed', e?.message || String(e)));
     return;
   }
+  if (rec !== r) { teardown(r); return; }
   openWs(r);
-  phase = 'waiting';
-  render();
+  setPhase('waiting');
 }
 
 function openWs(r) {
@@ -202,18 +262,18 @@ function openWs(r) {
     if (m.type === 'model') { if (rec === r && phase === 'waiting') { model = m; render(); } }
     else if (m.type === 'ready') {
       r.ready = true;
-      if (rec === r && phase === 'waiting') { phase = 'recording'; r.startedAt = Date.now(); meter(r); render(); }
+      if (rec === r && phase === 'waiting') { r.startedAt = Date.now(); setPhase('recording'); meter(r); }
     } else if (m.type === 'final') onFinal(m);
     else if (m.type === 'error') r.err = m;
   };
   ws.onclose = (ev) => {
     if (rec !== r) return;
     teardown(r);
-    rec = null; model = null; phase = 'idle';
-    if (r.err) notice = sttError(r.err);
-    else if (!r.opened) notice = () => t('unreachable');
-    else if (ev.code !== 1000 && !r.closing) notice = () => t('dropped');
-    render();
+    let why = null;
+    if (r.err) why = sttError(r.err);
+    else if (!r.opened) why = () => t('unreachable');
+    else if (ev.code !== 1000 && !r.closing) why = () => t('dropped');
+    toIdle(why, r.restart && !why);
   };
 }
 
@@ -228,16 +288,16 @@ function onFinal(m) {
   renderRecent();
 }
 
-async function stop() {
+/** Stop the current recording. Before `ready` nothing was accepted, so it just ends; after, the mic goes off at once
+ *  and the server's last finals are awaited (finishing) before idle. `restart` = record again afterwards. */
+async function stop(restart = false) {
   const r = rec;
-  if (!r || (phase !== 'waiting' && phase !== 'recording')) return;
-  if (!r.ready) { // nothing was accepted yet: just leave
-    r.closing = true;
-    teardown(r); rec = null; model = null; phase = 'idle'; render();
-    return;
-  }
-  phase = 'finishing';
-  render();
+  if (!r) return;
+  if (phase === 'starting') { rec = null; teardown(r); toIdle(null, restart); return; } // start() sees rec !== r
+  if (phase !== 'waiting' && phase !== 'recording') return;
+  if (!r.ready) { teardown(r); toIdle(null, restart); return; }
+  r.restart = restart;
+  setPhase('finishing');
   // Drain the worklet's partial batch (sent by the port handler above), then end the stream.
   await Promise.race([new Promise((res) => { r.onFlushed = res; r.node.port.postMessage('flush'); }), sleep(500)]);
   stopAudio(r); // the mic goes off now; the server only has decoding left
@@ -251,13 +311,25 @@ function stopAudio(r) {
   r.stream?.getTracks().forEach((tr) => tr.stop());
   r.ctx?.close().catch(() => {});
   r.node = r.stream = r.ctx = null;
-  $('rec').style.removeProperty('--lvl');
+  $('ind').style.removeProperty('--lvl');
 }
 
 function teardown(r) {
   stopAudio(r);
   clearTimeout(r.finishTimer);
   if (r.ws && r.ws.readyState <= WebSocket.OPEN) { r.closing = true; r.ws.close(); }
+}
+
+/** Host `close-request` (only sent while we reported busy): finish like Stop, then busy:false lets the host unmount. */
+function onCloseRequest() {
+  closing = true;
+  if (phase === 'recording') { stop(); return; } // toIdle -> setPhase('idle') answers busy:false
+  if (phase === 'finishing') { render(); return; } // already ending, same answer
+  // Not busy (the request crossed our busy:false, or a restart was starting): end whatever began, answer explicitly.
+  if (rec) stop();
+  busySent = false;
+  post({ type: 'busy', busy: false });
+  render();
 }
 
 /** Level bar (RMS of the analyser, -60…0 dBFS) and elapsed time, once per frame while recording. */
@@ -272,7 +344,7 @@ function meter(r) {
     const db = 10 * Math.log10(sum / buf.length + 1e-10);
     const lvl = Math.max(0, Math.min(1, (db + 60) / 60));
     $('level').style.width = `${Math.round(lvl * 100)}%`;
-    $('rec').style.setProperty('--lvl', lvl.toFixed(2));
+    $('ind').style.setProperty('--lvl', lvl.toFixed(2));
     const time = fmt(Date.now() - r.startedAt);
     if (time !== shown) $('timer').textContent = shown = time;
     r.raf = requestAnimationFrame(tick);
@@ -364,8 +436,11 @@ function setLang(l) {
   render();
 }
 
-$('rec').onclick = () => (phase === 'idle' ? start() : stop());
-$('mic').onchange = () => localStorage.setItem(`${LS}mic`, $('mic').value);
+$('act').onclick = () => { if (phase === 'idle') start(); else stop(); };
+$('mic').onchange = () => {
+  localStorage.setItem(`${LS}mic`, $('mic').value);
+  if (phase === 'recording') stop(true); // the last sentences of the old device still land, then it records on the new one
+};
 $('aboutBtn').onclick = () => { $('about').hidden = false; };
 $('aboutClose').onclick = () => { $('about').hidden = true; };
 $('licenseBack').onclick = () => { $('license').hidden = true; };
@@ -378,8 +453,13 @@ addEventListener('message', (e) => {
   if (m.type === 'init') {
     applyTheme(m);
     setLang(m.lang);
-    if (navigator.mediaDevices) { refreshDevices(); navigator.mediaDevices.addEventListener?.('devicechange', refreshDevices); }
-  } else if (m.type === 'theme') applyTheme(m);
+    if (autoStarted) return; // init is re-sent on every ready: start (and wire devicechange) once per iframe
+    autoStarted = true;
+    if (navigator.mediaDevices) navigator.mediaDevices.addEventListener?.('devicechange', refreshDevices);
+    if (m.view === 'chatbar') start(); // the toolbar click that opened us is the "start" (refreshDevices runs after the grant)
+    else { setPhase('idle'); if (navigator.mediaDevices) refreshDevices(); }
+  } else if (m.type === 'close-request') onCloseRequest();
+  else if (m.type === 'theme') applyTheme(m);
   else if (m.type === 'lang') setLang(m.lang);
 });
 

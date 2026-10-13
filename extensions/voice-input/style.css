@@ -22,36 +22,41 @@ button { font: inherit; color: inherit; }
 button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 #app { position: relative; display: flex; flex-direction: column; height: 100%; padding: 10px 12px 8px; gap: 8px; }
 
-.main { display: flex; align-items: center; gap: 12px; min-height: 0; }
-.info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding-right: 18px; }
-.status { font-size: 13px; color: var(--fg); overflow-wrap: anywhere; }
+.main { display: flex; align-items: flex-start; gap: 12px; min-height: 0; }
+.info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 5px; padding-right: 18px; }
+.head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.status { flex: 1 1 auto; min-width: 0; font-size: 13px; color: var(--fg); overflow-wrap: anywhere; }
 .status.err { color: var(--rec); }
 .sub { color: var(--muted); overflow-wrap: anywhere; }
 
-/* The big record button: primary mic when idle, red stop square while recording, ring follows the input level. */
-.rec { --lvl: 0; position: relative; flex: none; width: 60px; height: 60px; border-radius: 50%; border: 0; cursor: pointer;
-  display: grid; place-items: center; background: var(--primary); color: var(--primary-fg); transition: background .15s, opacity .15s; }
-.rec:hover:not(:disabled) { opacity: .9; }
-.rec:disabled { cursor: default; opacity: .6; }
-.rec svg { grid-area: 1 / 1; width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.rec .i-stop { display: none; fill: currentColor; stroke: none; }
-.rec .spin { grid-area: 1 / 1; display: none; width: 26px; height: 26px; border: 2.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
-.rec[data-phase="recording"], .rec[data-phase="waiting"], .rec[data-phase="finishing"] { background: var(--rec); color: #fff; }
-.rec[data-phase="recording"] .i-mic, .rec[data-phase="waiting"] .i-mic { display: none; }
-.rec[data-phase="recording"] .i-stop, .rec[data-phase="waiting"] .i-stop { display: block; }
-.rec[data-phase="starting"] .i-mic, .rec[data-phase="finishing"] .i-mic { display: none; }
-.rec[data-phase="starting"] .spin, .rec[data-phase="finishing"] .spin { display: block; }
-.rec[data-phase="recording"]::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; pointer-events: none;
-  border: 3px solid color-mix(in srgb, var(--rec) 45%, transparent); transform: scale(calc(1 + var(--lvl) * .18)); transition: transform 60ms linear; }
+/* State indicator (not a button — the toolbar mic is the control): pulsing red while recording, with a ring that
+   follows the input level; spinner while starting / connecting / finishing; muted mic when stopped. */
+.ind { --lvl: 0; position: relative; flex: none; width: 44px; height: 44px; margin-top: 2px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--btn-bg); color: var(--muted); border: 1px solid var(--border); }
+.ind svg { grid-area: 1 / 1; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ind .spin { grid-area: 1 / 1; display: none; width: 20px; height: 20px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+.ind[data-phase="starting"] svg, .ind[data-phase="waiting"] svg, .ind[data-phase="finishing"] svg { display: none; }
+.ind[data-phase="starting"] .spin, .ind[data-phase="waiting"] .spin, .ind[data-phase="finishing"] .spin { display: block; }
+.ind[data-phase="finishing"] { color: var(--rec); }
+.ind.err { color: var(--rec); border-color: color-mix(in srgb, var(--rec) 50%, var(--border)); }
+.ind[data-phase="recording"] { background: var(--rec); border-color: var(--rec); color: #fff; animation: pulse 1.6s ease-in-out infinite; }
+.ind[data-phase="recording"]::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; pointer-events: none;
+  border: 3px solid color-mix(in srgb, var(--rec) 40%, transparent); transform: scale(calc(1 + var(--lvl) * .22)); transition: transform 60ms linear; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--rec) 45%, transparent); } 50% { box-shadow: 0 0 0 7px transparent; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.barrow { display: flex; align-items: center; gap: 8px; }
-.bar { flex: 1 1 auto; height: 6px; border-radius: 3px; background: var(--btn-bg); border: 1px solid var(--border); overflow: hidden; }
+.bar { height: 6px; border-radius: 3px; background: var(--btn-bg); border: 1px solid var(--border); overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--primary); }
 .bar.level i { background: var(--rec); transition: width 60ms linear; }
 .bar.dl i { transition: width .3s; }
 .timer { flex: none; font-variant-numeric: tabular-nums; font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--muted); }
-.mic { max-width: 100%; align-self: flex-start; font: inherit; font-size: 11px; color: var(--muted); background: var(--btn-bg);
+.actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.actions:not(:has(> :not([hidden]))) { display: none; }
+.act { flex: none; padding: 1px 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--btn-bg); font-size: 12px; cursor: pointer; }
+.act:hover { background: var(--btn-hover); }
+.act[data-act="retry"], .act[data-act="startRec"] { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+.act[data-act="retry"]:hover, .act[data-act="startRec"]:hover { opacity: .9; }
+.mic { min-width: 0; max-width: 100%; font: inherit; font-size: 11px; color: var(--muted); background: var(--btn-bg);
   border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; }
 
 .recent { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 1px; color: var(--muted);
