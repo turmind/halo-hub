@@ -29,8 +29,28 @@ const canvas = $('stage')
 let world = null
 let stopPoll = null
 
+// ── loading overlay: visible from first paint until boot() (or, standalone,
+// until a token really has to be typed). Embedded failures stay here. ──
+const hideLoading = () => $('loading').classList.add('hidden')
+function loadFailed(msg) {
+  $('loading-err').textContent = msg
+  $('loading').classList.add('failed')
+}
+
+// Embedded: the admin cookie is the only auth — the activity bar exists only on
+// Halo ≥ 1.6.5, which always accepts it. No token fallback, never #setup.
+async function connectEmbedded() {
+  $('loading').classList.remove('failed')
+  try {
+    const s = await probe(location.origin, '')
+    conn.api = location.origin; conn.token = ''
+    boot(s)
+  } catch (e) { loadFailed(e.message || t('connFail')) }
+}
+
 // ── setup modal ──
 function showSetup(prefill = true) {
+  hideLoading()
   $('setup').classList.remove('hidden')
   if (prefill) {
     $('in-api').value = conn.api || location.origin
@@ -64,6 +84,7 @@ async function tryConnect() {
 
 // ── boot ──
 function boot(initialState) {
+  hideLoading()
   $('hud').classList.remove('hidden')
   $('legend').classList.remove('hidden')
   $('ticker').classList.remove('hidden')
@@ -308,6 +329,18 @@ $('in-token').addEventListener('keydown', (e) => { if (e.key === 'Enter') tryCon
 $('in-api').addEventListener('keydown', (e) => { if (e.key === 'Enter') tryConnect() })
 $('btn-settings').addEventListener('click', () => { if (stopPoll) { stopPoll(); stopPoll = null } showSetup() })
 $('btn-lang').addEventListener('click', () => setLang(nextLang()))
+$('btn-retry').addEventListener('click', connectEmbedded)
+// Fullscreen the whole page (HUD included; H still hides it). The canvas
+// follows through the existing resize → world.resize().
+const syncFullscreenBtn = () => { $('btn-fullscreen').title = t(document.fullscreenElement ? 'exitFullscreen' : 'fullscreen') }
+if (!document.fullscreenEnabled) $('btn-fullscreen').classList.add('hidden')
+$('btn-fullscreen').addEventListener('click', () => {
+  if (document.fullscreenElement) document.exitFullscreen()
+  else document.documentElement.requestFullscreen?.().catch(() => {})
+})
+document.addEventListener('fullscreenchange', syncFullscreenBtn)
+onLangChange(syncFullscreenBtn)
+syncFullscreenBtn()
 initMusic()
 syncLangBtn()
 applyStaticI18n()  // localize the setup modal before first connect
@@ -340,14 +373,9 @@ conn.load()
   if (init?.view === 'activity') {
     embedded = true
     setLang(init.lang)
-    // Same-origin admin cookie, no token (Halo ≥ 1.6.5 reads it as full). An
-    // older server answers 401 `token required` → stored-token / setup below.
-    try {
-      const s = await probe(location.origin, '')
-      conn.api = location.origin; conn.token = ''
-      $('btn-settings').classList.add('hidden')
-      hideSetup(); boot(s); return
-    } catch { /* fall back to the token flow */ }
+    $('btn-settings').classList.add('hidden')   // no token to set when embedded
+    connectEmbedded()
+    return
   }
   if (!conn.token) { showSetup(); return }
   const tryList = (conn.api && conn.api !== location.origin)

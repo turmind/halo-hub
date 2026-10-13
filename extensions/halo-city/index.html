@@ -25,6 +25,7 @@
       <div id="conn" class="conn"><i></i><span data-i18n="connecting">连接中…</span></div>
       <button id="btn-music" class="icon-btn" title="背景音乐">🎵</button>
       <button id="btn-lang" class="icon-btn lang-btn" data-i18n-title="langTitle" title="切换语言 / Switch language">中</button>
+      <button id="btn-fullscreen" class="icon-btn" title="全屏">⛶</button>
       <button id="btn-settings" class="icon-btn" data-i18n-title="settings" title="设置">⚙</button>
     </div>
   </header>
@@ -42,7 +43,7 @@
     <span class="lg"><i class="dot run"></i><span data-i18n="lgRun">干活中</span></span>
     <span class="lg"><i class="dot idle"></i><span data-i18n="lgIdle">摸鱼</span></span>
     <span class="lg"><i class="dot stop"></i><span data-i18n="lgStop">休息</span></span>
-    <span class="lg pixel-hint" data-i18n="pixelHint">滚轮 / 拖条缩放 · 拖拽平移 · 点小人看日志 · F 全街区</span>
+    <span class="lg pixel-hint" data-i18n="pixelHint">滚轮 / 拖条缩放 · 拖拽平移 · 点小人看日志 · F 全街区 · ⛶ 全屏</span>
   </footer>
 
   <div id="zoombar" class="hidden">
@@ -60,7 +61,19 @@
     <div id="insp-body"></div>
   </aside>
 
-  <div id="setup" class="modal-backdrop">
+  <!-- Shown until boot. Embedded mode fails here (error + retry), never on #setup. -->
+  <div id="loading" class="modal-backdrop">
+    <div class="loading">
+      <img class="loading-mark" src="favicon.svg" alt="" width="44" height="44" />
+      <p id="loading-text" class="loading-text" data-i18n="entering">正在进入 Halo 城…</p>
+      <div class="loading-fail">
+        <div id="loading-err" class="err"></div>
+        <button id="btn-retry" class="primary" data-i18n="retry">重试</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="setup" class="modal-backdrop hidden">
     <div class="modal">
       <h1 data-i18n="setupTitle">欢迎来到 Halo 像素街区</h1>
       <p class="sub" data-i18n="setupSub">输入你的 Halo 服务器地址与 Web Token，看 agent 们在城里上班。</p>

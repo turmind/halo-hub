@@ -54,16 +54,15 @@ inspector panel is open.
 - 对 agent 说 `/extension install halo-city`;
 - 或者 admin → Settings → Extensions,上传 release 里的 `halo-city-<version>.zip`。
 
-装好后 admin 最左侧活动栏多一个 **Halo 城 / Halo City** 按钮,点开就在主区域
-看这台服务器的城市。用的是 admin 登录身份(同源 cookie),能看到全部
-workspace,**不用填 token**;嵌入时右上角的 ⚙ 隐藏,语言跟随 admin,背景音乐
-默认关(🎵 手动打开后记住)。不装就没有这个按钮。
-
-老服务端(≤ 1.6.4)不认 admin cookie,会回 401——这时退回下面的 token 流程,
-弹出连接框填 Web Token。
+装好后 admin 最左侧活动栏多一个 **Halo 城 / Halo City** 按钮,点开先显示
+loading,随即进城。用的是 admin 登录身份(同源 cookie),能看到全部
+workspace,**服务器地址、token 都不用填**,也不会弹连接框;嵌入时右上角的 ⚙
+隐藏,语言跟随 admin,背景音乐默认关(🎵 手动打开后记住)。连不上时 loading
+里显示错误和「重试」按钮。不装就没有这个按钮。
 
 操作:滚轮缩放 · 拖拽平移 · 点击查看 · 双击切 1×/3× · **F** 全街区 ·
-**H** 纯净模式 · **Esc** 关面板 · 右上角 **🎵** 背景音乐开关 · **中/EN** 切语言。
+**H** 纯净模式 · **Esc** 关面板 · 右上角 **🎵** 背景音乐开关 · **中/EN** 切语言 ·
+**⛶** 全屏(整页铺满屏幕,HUD 也在;H 照样能隐藏)。
 (嵌入时快捷键要先点一下城市让 iframe 获得焦点。)
 
 ## 独立部署(可选)
@@ -76,8 +75,9 @@ cd halo-city
 python3 -m http.server 8080     # → http://localhost:8080
 ```
 
-填 Halo 服务器地址(如 `http://localhost:9527`)+ Web Token(admin → Channels
-→ Web)。kiosk 直链:`/#api=…&token=…`(token 立即从地址栏抹掉)。
+打开后先 loading,用存过的 token 自动连;没有可用的 token 才弹连接框,填 Halo
+服务器地址(如 `http://localhost:9527`)+ Web Token(admin → Channels → Web),
+之后点 ⚙ 可重新打开连接框。kiosk 直链:`/#api=…&token=…`(token 立即从地址栏抹掉)。
 
 ### 和 Halo 同源
 

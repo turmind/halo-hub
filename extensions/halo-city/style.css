@@ -235,6 +235,15 @@ body.zen .logo:hover { opacity: 0.9; }
 .primary:disabled { opacity: 0.6; cursor: wait; }
 .tiny { font-size: 11px; color: #4a5378; text-align: center; margin-top: 12px; }
 
+/* ── loading overlay (until boot; .failed = error + retry) ── */
+.loading { width: min(320px, 92vw); display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
+.loading-mark { image-rendering: pixelated; animation: loading-bob 1s steps(2) infinite; }
+@keyframes loading-bob { 50% { transform: translateY(-6px); } }
+.loading-text { font: bold 14px var(--mono); letter-spacing: 1px; }
+.loading-fail { display: none; width: 100%; }
+#loading.failed .loading-fail { display: block; }
+#loading.failed .loading-mark { animation: none; opacity: 0.5; }
+
 /* ── zoom bar (bottom-right; wheel still works, this is an extra control) ── */
 #zoombar {
   position: fixed; right: 14px; bottom: 44px; z-index: 9;

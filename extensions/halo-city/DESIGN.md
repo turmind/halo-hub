@@ -74,9 +74,13 @@ Halo 服务器运行态的**街景式**像素可视化:侧视、剖面的像素�
 
 操作:滚轮缩放(九档 `0.3×–6×`)· 拖拽平移 · 点击查看 · **双击**在 1×/3× 间快速切 ·
 **F** 全街区 · **H**(或点左上角 logo)切纯净模式 · **Esc** 先关面板,没有面板时切纯净模式 ·
-右上角 **中/EN** 一键切语言。
+右上角 **中/EN** 一键切语言 · **⛶** 全屏。
 
 - **纯净模式(zen)**:淡出所有 HUD(统计/动态/图例/缩放条/面板),只留街景,适合大屏常驻展示
+- **全屏**:⛶ 按钮(⚙ 左边)对 `document.documentElement` 切 Fullscreen API,整页连 HUD 铺满
+  屏幕,H/zen 照样能隐藏 HUD;画布靠已有的 `resize → world.resize()` 跟着变大。
+  `fullscreenchange` 时按钮 title 在「全屏 / 退出全屏」间切换,`document.fullscreenEnabled`
+  为 false(比如宿主 iframe 不放行)时隐藏按钮。不设快捷键(双击已被缩放占用)
 - **多语言(i18n)**:中文 / English 一键切;`?lang=en`/`?lang=zh` 直达,选择存 localStorage。
   运行时文案走 `t()`,静态 DOM 走 `data-i18n` 属性填充
 - **背景音乐**:🎵/🔇 HUD 按钮(挨着 中/EN),纯 Web Audio 程序生成、零素材,
@@ -91,10 +95,14 @@ Halo 服务器运行态的**街景式**像素可视化:侧视、剖面的像素�
 - **握手**:framed 时模块一加载就发 `{haloExt:1,type:'ready',protocol:1}`,收帧只认
   `e.source === parent && e.data?.haloExt === 1`。最多等 2s 的 `init`:收到 `view:'activity'`
   才进入嵌入模式;没收到(被别的页面 iframe 了)就按 standalone 走。
-- **连接**:先 `setLang(init.lang)`,再对 `location.origin` **不带 token** probe 一次
-  (token 为空时 `api.js` 不发 `x-token` 头,admin cookie 自动带上)。成功即上街,并隐藏 ⚙
-  (嵌入时 token 设置没有意义);401(≤ 1.6.4 不认 cookie)退回 standalone 流程:先试存过的
-  token,再不行弹连接框。
+- **连接**:页面一打开就是 loading 遮罩(`#loading`,`#setup` 默认 hidden)。先
+  `setLang(init.lang)`、隐藏 ⚙(嵌入时 token 设置没有意义),再对 `location.origin`
+  **不带 token** probe(`connectEmbedded()`;token 为空时 `api.js` 不发 `x-token` 头,admin
+  cookie 自动带上),成功即 `boot()` 上街。嵌入模式**永远不显示连接框**、也不退回存过的
+  token:活动栏入口只在 Halo ≥ 1.6.5 才有,而 1.6.5 一定认 cookie。probe 失败就在 loading
+  里显示错误和「重试」按钮,重试即重新 probe。
+- **standalone**(不在 iframe 里,或 2s 内没收到 init):等待期间同样显示 loading;存过的
+  token 自动连,确定要填 token 时才收起 loading、弹连接框。
 - **语言**:之后 host 发来的 `{type:'lang'}` 帧直接 `setLang`;`theme` 帧忽略,像素城保持自己的配色。
 - **音乐**:framed 时默认关,只有 localStorage 里明确是 `'on'` 才开(在 admin 里点开面板就响太扰人);
   standalone 仍默认开。
