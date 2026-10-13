@@ -11,7 +11,7 @@ import { execFileSync } from 'node:child_process';
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const VERSION_RE = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 const FILE_EXT_RE = /^\.[a-z0-9]+$/;
-const CAPABILITIES = ['save', 'media', 'transcribe', 'fs-read'];
+const CAPABILITIES = ['save', 'media', 'transcribe', 'fs-read', 'stt-local'];
 const PLATFORMS = ['web', 'desktop-mac', 'desktop-win', 'desktop-linux'];
 const SETTING_KEY_RE = /^[a-z][a-z0-9_]{0,63}$/;
 const SETTING_TYPES = ['string', 'int', 'float', 'boolean', 'enum'];
@@ -57,7 +57,20 @@ function manifestError(m) {
     for (const k of ['title', 'title_zh']) if (a[k] !== undefined && (typeof a[k] !== 'string' || a[k].trim() === '' || a[k].length > 64)) return `activity.${k} must be a non-empty string (≤ 64 chars)`;
     for (const k of ['description', 'description_zh']) if (a[k] !== undefined && (typeof a[k] !== 'string' || a[k].length > 200)) return `activity.${k} must be a string (≤ 200 chars)`;
     if (a.order !== undefined && (!Number.isInteger(a.order) || a.order < 0 || a.order > 1000)) return 'activity.order must be an integer 0–1000';
-    if (!Array.isArray(m.extensions)) return 'extensions must be an array (empty is fine with activity)';
+  }
+  if (m.chatbar !== undefined) {
+    const c = m.chatbar;
+    if (!isObj(c)) return 'chatbar must be an object';
+    if (c.icon !== undefined) {
+      if (typeof c.icon !== 'string' || c.icon === '' || c.icon.startsWith('/') || c.icon.split(/[\\/]/).includes('..') || !/\.(svg|png)$/i.test(c.icon)) return 'chatbar.icon must be a relative .svg or .png path inside the extension directory';
+      if (!isFile(`${dir}/${c.icon}`)) return `chatbar icon not found: ${c.icon}`;
+    }
+    for (const k of ['title', 'title_zh']) if (c[k] !== undefined && (typeof c[k] !== 'string' || c[k].trim() === '' || c[k].length > 64)) return `chatbar.${k} must be a non-empty string (≤ 64 chars)`;
+    if (c.height !== undefined && (!Number.isInteger(c.height) || c.height < 80 || c.height > 480)) return 'chatbar.height must be an integer 80–480';
+    if (c.order !== undefined && (!Number.isInteger(c.order) || c.order < 0 || c.order > 1000)) return 'chatbar.order must be an integer 0–1000';
+  }
+  if (m.activity !== undefined || m.chatbar !== undefined) {
+    if (!Array.isArray(m.extensions)) return 'extensions must be an array (empty is fine with activity or chatbar)';
   } else if (!Array.isArray(m.extensions) || m.extensions.length === 0) return 'extensions must be a non-empty array';
   for (const e of m.extensions) if (typeof e !== 'string' || !FILE_EXT_RE.test(e)) return `extensions entry "${e}" must look like ".glb" (lowercase, with dot)`;
   if (typeof m.entry !== 'string' || m.entry === '' || m.entry.startsWith('/') || m.entry.split(/[\\/]/).includes('..')) return 'entry must be a relative path inside the extension directory';

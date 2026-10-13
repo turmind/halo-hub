@@ -5,7 +5,7 @@ Installable add-ons for [Halo](https://github.com/turmind/halo-agent), kept out 
 ## Layout
 
 ```
-extensions/<id>/    Canvas preview extensions (open file types the core app does not ship, e.g. .drawio, .glb, or add an activity-bar entry)
+extensions/<id>/    Canvas preview extensions (open file types the core app does not ship, e.g. .drawio, .glb, or add an activity-bar entry / chat-bar button)
 models/<id>.yaml    Model provider configs (one yaml per provider, released together)
 skills/<id>/        Skills (SKILL.md + resources)
 workspaces/<id>/    Shareable workspace bundles (.halo/ config)
@@ -78,7 +78,7 @@ node scripts/pack.mjs extensions/<id>          # → dist/<id>-<version>.zip
 gh release create <id>-v<version> dist/<id>-<version>.zip --title "<id> v<version>"
 ```
 
-`pack.mjs` needs only Node and the system `zip`; it checks that the manifest `id` matches the directory name, the `version` is semver, `entry` exists, and an `activity` block (activity-bar entry; its `icon` must exist) is well-formed — the same rules and messages as the host's registry. Repo-maintenance files (`fetch-deps.sh`, `build.sh`) are left out of the zip.
+`pack.mjs` needs only Node and the system `zip`; it checks that the manifest `id` matches the directory name, the `version` is semver, `entry` exists, and the `activity` (activity-bar entry) and `chatbar` (chat-input toolbar button; `height` 80–480, default 160) blocks are well-formed, their `icon` must exist — the same rules and messages as the host's registry. Repo-maintenance files (`fetch-deps.sh`, `build.sh`) are left out of the zip.
 
 Model configs are released together, tagged with the UTC date:
 
