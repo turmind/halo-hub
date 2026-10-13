@@ -5,7 +5,7 @@ Installable add-ons for [Halo](https://github.com/turmind/halo-agent), kept out 
 ## Layout
 
 ```
-extensions/<id>/    Canvas preview extensions (open file types the core app does not ship, e.g. .drawio, .glb)
+extensions/<id>/    Canvas preview extensions (open file types the core app does not ship, e.g. .drawio, .glb, or add an activity-bar entry)
 models/<id>.yaml    Model provider configs (one yaml per provider, released together)
 skills/<id>/        Skills (SKILL.md + resources)
 workspaces/<id>/    Shareable workspace bundles (.halo/ config)
@@ -28,6 +28,7 @@ dist/               Build output — packaged zips, not committed
 | `htrans` | `.htrans` (folder) | ✓ | Meeting recorder: mic + system sound, live Amazon Transcribe captions, timed screenshots; needs the server's transcribe proxy + AWS credentials |
 | `megadrive` | `.mega` (folder) | — | Offline Mega Drive / Genesis (+ Master System / Game Gear) emulator, EmulatorJS + Genesis Plus GX (~1.5 MB zip). The folder holds `game.json` (which ROM, anywhere on the machine — `.zip` `.7z` `.md` `.gen` `.smd` `.bin` `.sms` `.gg`, read in place, never copied — and the display filter) and `saves/`; keyboard, gamepad, touch stick; two players (keyboard + gamepad or two gamepads); non-commercial core license, no ROMs; release-zip install only |
 | `arcade` | `.arcade` (folder) | — | Offline arcade emulator, EmulatorJS + FinalBurn Neo (~8.5 MB zip). The folder holds `game.json` (which romset, anywhere on the machine — an unmodified `.zip` named after the set, read in place, never copied; parent / BIOS zips such as `neogeo.zip` are picked up from the same folder — and the display filter) and `saves/`; keyboard, gamepad, touch stick; two players (keyboard + gamepad or two gamepads); FBNeo licence forbids any commercial use, no ROMs; release-zip install only |
+| `halo-city` | — (activity-bar entry) | — | Live pixel city of the server; needs Halo ≥ 1.6.5 |
 
 **Models** (`models/<id>.yaml`, release tag `models-v<YYYY.MM.DD>`)
 
@@ -65,7 +66,7 @@ Extensions install globally (under `~/.halo/global/`). Three ways:
 
 - **Agent**: `/extension install <id>` — downloads the latest `<id>-v*` release zip from this repo.
 - **Admin**: Extensions panel → upload the `<id>-<version>.zip` from a GitHub release.
-- **Manual**: unzip a release zip into `~/.halo/global/extensions/<id>/`. For extensions whose runtime files are committed (`glb`, `ipynb`), `cp -r extensions/<id> ~/.halo/global/extensions/` also works; `drawio` and `excalidraw` need their `fetch-deps.sh` / `build.sh` run first, so use the release zip.
+- **Manual**: unzip a release zip into `~/.halo/global/extensions/<id>/`. For extensions whose runtime files are committed (`glb`, `ipynb`, `halo-city`), `cp -r extensions/<id> ~/.halo/global/extensions/` also works; `drawio` and `excalidraw` need their `fetch-deps.sh` / `build.sh` run first, so use the release zip.
 
 ## Publishing
 
@@ -77,7 +78,7 @@ node scripts/pack.mjs extensions/<id>          # → dist/<id>-<version>.zip
 gh release create <id>-v<version> dist/<id>-<version>.zip --title "<id> v<version>"
 ```
 
-`pack.mjs` needs only Node and the system `zip`; it checks that the manifest `id` matches the directory name, the `version` is semver, and `entry` exists. Repo-maintenance files (`fetch-deps.sh`, `build.sh`) are left out of the zip.
+`pack.mjs` needs only Node and the system `zip`; it checks that the manifest `id` matches the directory name, the `version` is semver, `entry` exists, and an `activity` block (activity-bar entry; its `icon` must exist) is well-formed — the same rules and messages as the host's registry. Repo-maintenance files (`fetch-deps.sh`, `build.sh`) are left out of the zip.
 
 Model configs are released together, tagged with the UTC date:
 

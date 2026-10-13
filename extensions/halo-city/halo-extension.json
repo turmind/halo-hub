@@ -1,0 +1,18 @@
+{
+  "id": "halo-city",
+  "name": "Halo City",
+  "version": "1.0.0",
+  "description": "像素城市实时可视化：每个工作区一栋楼，每个会话一只动物市民 / A live pixel city of this Halo server",
+  "extensions": [],
+  "entry": "index.html",
+  "activity": {
+    "icon": "icon.svg",
+    "title": "Halo City",
+    "title_zh": "Halo 城",
+    "description": "Live pixel city of this server",
+    "description_zh": "服务器运行态像素城市",
+    "order": 100
+  },
+  "homepage": "https://github.com/turmind/halo-hub/tree/main/extensions/halo-city",
+  "license": "MIT"
+}

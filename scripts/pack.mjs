@@ -47,7 +47,18 @@ function manifestError(m) {
   if (m.description !== undefined && (typeof m.description !== 'string' || m.description.length > 200)) {
     return `description must be a string (≤ 200 chars)${typeof m.description === 'string' ? `, has ${m.description.length}` : ''}`;
   }
-  if (!Array.isArray(m.extensions) || m.extensions.length === 0) return 'extensions must be a non-empty array';
+  if (m.activity !== undefined) {
+    const a = m.activity;
+    if (!isObj(a)) return 'activity must be an object';
+    if (a.icon !== undefined) {
+      if (typeof a.icon !== 'string' || a.icon === '' || a.icon.startsWith('/') || a.icon.split(/[\\/]/).includes('..') || !/\.(svg|png)$/i.test(a.icon)) return 'activity.icon must be a relative .svg or .png path inside the extension directory';
+      if (!isFile(`${dir}/${a.icon}`)) return `activity icon not found: ${a.icon}`;
+    }
+    for (const k of ['title', 'title_zh']) if (a[k] !== undefined && (typeof a[k] !== 'string' || a[k].trim() === '' || a[k].length > 64)) return `activity.${k} must be a non-empty string (≤ 64 chars)`;
+    for (const k of ['description', 'description_zh']) if (a[k] !== undefined && (typeof a[k] !== 'string' || a[k].length > 200)) return `activity.${k} must be a string (≤ 200 chars)`;
+    if (a.order !== undefined && (!Number.isInteger(a.order) || a.order < 0 || a.order > 1000)) return 'activity.order must be an integer 0–1000';
+    if (!Array.isArray(m.extensions)) return 'extensions must be an array (empty is fine with activity)';
+  } else if (!Array.isArray(m.extensions) || m.extensions.length === 0) return 'extensions must be a non-empty array';
   for (const e of m.extensions) if (typeof e !== 'string' || !FILE_EXT_RE.test(e)) return `extensions entry "${e}" must look like ".glb" (lowercase, with dot)`;
   if (typeof m.entry !== 'string' || m.entry === '' || m.entry.startsWith('/') || m.entry.split(/[\\/]/).includes('..')) return 'entry must be a relative path inside the extension directory';
   if (!isFile(`${dir}/${m.entry}`)) return `entry not found: ${m.entry}`;
