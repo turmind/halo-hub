@@ -102,7 +102,8 @@ Halo 服务器运行态的**街景式**像素可视化:侧视、剖面的像素�
   token:活动栏入口只在 Halo ≥ 1.6.5 才有,而 1.6.5 一定认 cookie。probe 失败就在 loading
   里显示错误和「重试」按钮,重试即重新 probe。
 - **standalone**(不在 iframe 里,或 2s 内没收到 init):等待期间同样显示 loading;存过的
-  token 自动连,确定要填 token 时才收起 loading、弹连接框。
+  token 自动连,确定要填 token 时才收起 loading、弹连接框。自动连失败(token 无效 /
+  被限流 / 连不上)时连接框直接显示失败原因,不用再点一次「连接」才看到。
 - **语言**:之后 host 发来的 `{type:'lang'}` 帧直接 `setLang`;`theme` 帧忽略,像素城保持自己的配色。
 - **音乐**:framed 时默认关,只有 localStorage 里明确是 `'on'` 才开(在 admin 里点开面板就响太扰人);
   standalone 仍默认开。
@@ -168,7 +169,15 @@ peek miss 时降级为**只读 sqlite 快照**:readonly 模式直开该 workspac
   sky tick 渲一次,其余帧一次 blit。**gradient 填充不得入 layer**——Skia 的
   gradient dither 锚定 device y,带偏移 blit 会整片移相(drawSea 因此回退直绘)
 - **视口剔除**:楼整体(`buildingVisible`)与楼内逐层(`drawFloors`)双级剔除;
-  市民绘制列表同样剔除(但位置模拟不剔——否则回屏跳变)
+  市民绘制列表同样剔除(但位置模拟不剔——否则回屏跳变)。视野底边高于 `STREET_TOP`
+  (-44,路灯顶)时整条街带(步道→海)跳过;巷口按 gap 剔除;楼角墙纹只走视野内的砖行
+- **固定 hash 只滚一次**:星空 / 海面闪点 / 巷口道具的 rng 序列模块加载或首用时
+  算好(每帧结果本就相同);seat / station 查找表在 `Building.update` 建、number key
+- **alpha 色输出 `#rrggbbaa`**(palette.js):与 `rgba()` 同一 8-bit 颜色,canvas
+  解析快约 1/3。**不要对 alpha() 的返回值再调 shade/tint/alpha**——rgbOf 只认
+  hex6,会得到 NaN 无效色被 canvas 静默忽略(1.0.1 的沙滩浪花线即此)
+- **inspector 不空转重建**:楼 / 楼层 / 技能面板 HTML 与上次相同则不动 DOM,
+  轮询不会冲掉选中文字;切语言时整面板重建
 - **stateSig 签名比对**(main.js):快照签名(剔除 serverTime、uptime 取分钟粒度)
   未变时跳过整个 ingest/diff/rebuild,空闲服务器的轮询近乎零成本
 - **后台停轮询**(api.js / inspector.js):`document.hidden` 时停止轮询,
