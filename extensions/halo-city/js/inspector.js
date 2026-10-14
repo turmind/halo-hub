@@ -26,6 +26,7 @@ let onPick = null
 let logTimer = null
 let logKey = ''            // wsPath|sessionId currently shown
 let shownAgent = ''        // agent panel currently rendered (avoid rebuilds)
+let shownHtml = ''         // building / floor / skill panel currently rendered
 
 export function bindInspector(h) { onPick = h.onPick }
 
@@ -40,15 +41,22 @@ export function showInspector(vm) {
       return
     }
     shownAgent = vm.id
+    shownHtml = ''
     body.innerHTML = agentHtml(vm)
     wire()
     startLog(vm)
   } else {
     stopLog()
     shownAgent = ''
-    body.innerHTML = vm.type === 'skill' ? skillHtml(vm)
+    // Same for the other panels: a poll that changed nothing they show (most
+    // polls — any session anywhere moves the snapshot) keeps the DOM, so a
+    // text selection or hovered row survives instead of being rebuilt.
+    const html = vm.type === 'skill' ? skillHtml(vm)
       : vm.type === 'floor' ? floorHtml(vm)
       : buildingHtml(vm)
+    if (html === shownHtml) return
+    shownHtml = html
+    body.innerHTML = html
     wire()
   }
 }
@@ -69,6 +77,7 @@ function patchAgent(a) {
 export function hideInspector() {
   stopLog()
   shownAgent = ''
+  shownHtml = ''
   el.classList.add('hidden')
   body.innerHTML = ''
 }

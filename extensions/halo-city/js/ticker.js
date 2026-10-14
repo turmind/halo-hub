@@ -1,7 +1,7 @@
 // Live activity feed (bottom-left): real events from snapshot diffs.
 import { toolCN, esc } from './util.js'
 import { makeLook } from './people.js'
-import { t } from './i18n.js'
+import { t, onLangChange } from './i18n.js'
 
 const MAX = 40
 const feed = []
@@ -16,6 +16,9 @@ export function bindTicker() {
   const head = document.getElementById('ticker-head')
   head.addEventListener('click', () => { box.classList.toggle('collapsed'); dirty = true })
 }
+
+// rows are rendered in the active language → a language flip re-renders them
+onLangChange(() => { dirty = true })
 
 export function pushEvent(ev) {
   feed.unshift(ev)

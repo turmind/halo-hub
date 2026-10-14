@@ -7,7 +7,7 @@
 const DICT = {
   zh: {
     // document / setup modal
-    title: 'Halo Show · 像素街区',
+    title: 'Halo City · 像素街区',
     setupTitle: '欢迎来到 Halo 像素街区',
     setupSub: '输入你的 Halo 服务器地址与 Web Token，看 agent 们在城里上班。',
     fieldServer: '服务器地址',
@@ -118,7 +118,7 @@ const DICT = {
     langLabel: '中',
   },
   en: {
-    title: 'Halo Show · Pixel Block',
+    title: 'Halo City · Pixel Block',
     setupTitle: 'Welcome to the Halo Pixel Block',
     setupSub: 'Enter your Halo server URL and Web Token to watch the agents at work in the city.',
     fieldServer: 'Server URL',

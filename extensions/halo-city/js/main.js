@@ -321,6 +321,9 @@ onLangChange(() => {
   applyStaticI18n()
   syncLangBtn()
   if (lastState) hud(lastState)
+  // the open panel's labels are baked into its HTML: rebuild it from scratch
+  // (an agent panel re-fetches its log once)
+  if (world?.selection) { hideInspector(); world.refreshSelection() }
 })
 
 // ── static wiring ──
