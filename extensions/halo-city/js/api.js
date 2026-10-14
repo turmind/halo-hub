@@ -25,9 +25,10 @@ const base = () => conn.api.replace(/\/+$/, '')
 const authHeaders = (token) => (token ? { 'x-token': token } : {})
 
 /** The halo server's SPA fallback answers unmatched GETs with 200 + HTML, so
- *  a wrong address yields HTML — catch it before json() throws gibberish. */
-async function asJson(res) {
-  if (res.status === 401) throw new Error(t('errToken'))
+ *  a wrong address yields HTML — catch it before json() throws gibberish.
+ *  A 401 with no token sent is the embedded admin cookie having expired. */
+async function asJson(res, token) {
+  if (res.status === 401) throw new Error(t(token ? 'errToken' : 'errSession'))
   if (res.status === 403) throw new Error(t('errForbidden'))
   if (res.status === 429) throw new Error(t('errRate'))
   if (!res.ok) throw new Error(t('errServer', res.status))
@@ -37,18 +38,18 @@ async function asJson(res) {
 }
 
 export async function fetchState(signal) {
-  return asJson(await fetch(`${base()}/api/show/state`, { headers: authHeaders(conn.token), credentials: 'include', signal }))
+  return asJson(await fetch(`${base()}/api/show/state`, { headers: authHeaders(conn.token), credentials: 'include', signal }), conn.token)
 }
 
 /** Per-session detail: trimmed message log + true token caps. */
 export async function fetchSession(wsPath, sessionId, signal) {
   const q = `ws=${encodeURIComponent(wsPath)}&id=${encodeURIComponent(sessionId)}`
-  return asJson(await fetch(`${base()}/api/show/session?${q}`, { headers: authHeaders(conn.token), credentials: 'include', signal }))
+  return asJson(await fetch(`${base()}/api/show/session?${q}`, { headers: authHeaders(conn.token), credentials: 'include', signal }), conn.token)
 }
 
 export async function probe(api, token) {
   const res = await fetch(`${api.replace(/\/+$/, '')}/api/show/state`, { headers: authHeaders(token), credentials: 'include' })
-  return asJson(res)
+  return asJson(res, token)
 }
 
 /** Poll driver with error backoff. Returns a stop(). Parks while the tab is

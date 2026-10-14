@@ -51,6 +51,7 @@ const DICT = {
     connFail: '连接失败',
     // api errors
     errToken: 'token 无效或已禁用',
+    errSession: '登录已过期，请刷新',
     errForbidden: '该 token 无权访问此会话',
     errRate: '请求过于频繁，请稍后再试',
     errServer: (code) => `服务器返回 ${code}`,
@@ -156,6 +157,7 @@ const DICT = {
     connOk: 'Connected',
     connFail: 'Connection failed',
     errToken: 'Token invalid or disabled',
+    errSession: 'Login expired, please refresh',
     errForbidden: 'This token may not access that session',
     errRate: 'Too many requests, please retry shortly',
     errServer: (code) => `Server returned ${code}`,

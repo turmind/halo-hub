@@ -1,7 +1,7 @@
 {
   "id": "halo-city",
   "name": "Halo City",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "像素城市实时可视化：每个工作区一栋楼，每个会话一只动物市民 / A live pixel city of this Halo server",
   "extensions": [],
   "entry": "index.html",
