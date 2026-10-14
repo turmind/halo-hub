@@ -3,7 +3,7 @@
 //   sky/skyline → street → building interiors → citizens → building facades
 // so people appear inside rooms but behind the parapet/sign layer.
 import { Camera } from './camera.js'
-import { City, OUTER_W, ALLEY, FLOOR_H, LOBBY_H, SLAB, BALCONY_W } from './city.js'
+import { City, OUTER_W, ALLEY, FLOOR_H, LOBBY_H, SLAB, BALCONY_W, STREET_TOP } from './city.js'
 import { Citizen } from './citizen.js'
 import { Traffic } from './traffic.js'
 import { sky, alpha, STATUS_COLOR } from './palette.js'
@@ -162,8 +162,13 @@ export class World {
 
     const sk = this.city.drawSky(ctx, hour, view, this.cam.x)
     this.traffic.drawSky(ctx, sk)          // UFO / planes — behind buildings
-    this.city.drawStreet(ctx, t, sk, view)
-    this.traffic.drawGround(ctx, sk)       // bus-stop shelter — behind people
+    // the street band (lampposts → sea) is skipped whole while the view ends
+    // above it — fit / tower views of a tall block, ~20% of the frame's rects
+    const street = view.y + view.h >= STREET_TOP
+    if (street) {
+      this.city.drawStreet(ctx, t, sk, view)
+      this.traffic.drawGround(ctx, sk)     // bus-stop shelter — behind people
+    }
 
     // lit floors per building, one pass over citizens (floors with any present
     // citizen that isn't stopped — running OR idle keeps the room's lights on)
@@ -190,13 +195,15 @@ export class World {
     // citizens, sorted by y then a stable per-id jitter for overlap order.
     // _sx/_sy update for EVERY citizen (picking + links need them), but only
     // the on-screen ones draw. The draw list array is reused across frames.
+    // Vertical cull = the sprite's real extent around the feet (y): shadow +
+    // outline reach y+3, the tool bubble tops out at y-51 — nothing else.
     const list = this._drawList || (this._drawList = [])
     list.length = 0
     for (const cz of this.citizens.values()) {
       const p = cz.worldPos()
       cz._sx = p.x; cz._sy = p.y
       if (p.x >= view.x - 60 && p.x <= view.x + view.w + 60 &&
-          p.y >= view.y - 20 && p.y <= view.y + view.h + 70) list.push(cz)
+          p.y >= view.y - 4 && p.y <= view.y + view.h + 56) list.push(cz)
     }
     list.sort((a, c) => (a._sy - c._sy) || (fnv(a.id) % 13) - (fnv(c.id) % 13))
     for (const cz of list) cz.draw(ctx)
@@ -212,7 +219,7 @@ export class World {
 
     // greenway trees sit closer to camera than the road, so they paint last and
     // occlude any bus/car passing behind them
-    this.city.drawStreetFg(ctx, t, sk, view)
+    if (street) this.city.drawStreetFg(ctx, t, sk, view)
 
     // selection adorners
     if (this.selection?.type === 'agent') {

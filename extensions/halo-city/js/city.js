@@ -50,6 +50,9 @@ const ALLEY_KINDS = ['cart', 'picnic', 'hoop', 'bikes']
 const ROAD_TOP = 11, ROAD_BOT = 27
 const GREEN_TOP = ROAD_BOT, GREEN_BOT = 40
 const WALL_TOP = GREEN_BOT, BEACH_TOP = 48, BEACH_BOT = 62
+/** Highest pixel of the whole street band (the lamppost head; alley props top
+ *  out at -31, the bus shelter at -25). A view ending above it sees no street. */
+export const STREET_TOP = -44
 
 function px(ctx, x, y, w, h, c) {
   ctx.fillStyle = c
@@ -274,7 +277,7 @@ export class Building {
     px(ctx, x0, top, 2, -top, m.hi)                                  // lit left corner pier
     px(ctx, x0 + OUTER_W - 2, top, 2, -top, m.lo)                    // shadowed right corner pier
     px(ctx, x0 + 2, top, 1, -top, alpha(tint(m.base, 0.25), 0.5))    // pier inner highlight
-    this.facadeTexture(ctx, x0, top)                                 // material grain on the corner piers
+    this.facadeTexture(ctx, x0, top, vTop, vBot)                     // material grain on the corner piers
 
     // ── lobby ──
     if (0 < vTop || -LOBBY_H > vBot) { this.drawFloors(ctx, t, sk, litFloors, vTop, vBot); return }
@@ -343,26 +346,31 @@ export class Building {
   /** Material grain on the two exposed corner piers (the only exterior wall
    *  strips visible in cross-section). Brick/sandstone get a staggered course
    *  pattern; concrete/slate get faint board-form seams; copper/teal get
-   *  vertical streaks. Drawn once, full height, clipped to the pier columns. */
-  facadeTexture(ctx, x0, top) {
+   *  vertical streaks. Drawn once, full height, clipped to the pier columns.
+   *  The courses are walked only across the [vTop, vBot] view band (same phase
+   *  as from the roof): a 100-floor brick tower is ~1000 courses × 4 rects. */
+  facadeTexture(ctx, x0, top, vTop, vBot) {
     const m = this.mat
     const Lx = x0 + 1, Rx = x0 + OUTER_W - WALL          // left + right pier inner starts
     const pierW = WALL - 1
+    const end = Math.min(0, vBot + 4)
+    const k0 = (base, step) => Math.max(0, Math.floor((vTop - 1 - base) / step))  // first course in band
     if (m.name === 'brick' || m.name === 'sandstone') {
+      const ks = k0(top + 5, 6)
       ctx.fillStyle = alpha(m.mortar, 0.55)
-      for (let yy = top + 5; yy < 0; yy += 6) {           // horizontal mortar courses
+      for (let yy = top + 5 + ks * 6; yy < end; yy += 6) {  // horizontal mortar courses
         ctx.fillRect(Lx, Math.round(yy), pierW, 1)
         ctx.fillRect(Rx, Math.round(yy), pierW, 1)
       }
       ctx.fillStyle = alpha(m.mortar, 0.4)                // staggered vertical head joints
-      for (let yy = top + 5, k = 0; yy < 0; yy += 6, k++) {
+      for (let k = ks, yy = top + 5 + ks * 6; yy < end; yy += 6, k++) {
         const off = (k % 2) * 2
         ctx.fillRect(Lx + off, Math.round(yy) - 3, 1, 3)
         ctx.fillRect(Rx + off, Math.round(yy) - 3, 1, 3)
       }
     } else if (m.name === 'concrete' || m.name === 'slate') {
       ctx.fillStyle = alpha(shade(m.base, 0.3), 0.45)     // board-form seams every 14px
-      for (let yy = top + 14; yy < 0; yy += 14) {
+      for (let yy = top + 14 + k0(top + 14, 14) * 14; yy < end; yy += 14) {
         ctx.fillRect(Lx, Math.round(yy), pierW, 1)
         ctx.fillRect(Rx, Math.round(yy), pierW, 1)
       }
