@@ -176,10 +176,10 @@ function setConn(state, msg) {
   const el = $('conn')
   el.className = 'conn ' + (state === 'err' ? 'err' : 'ok')
   el.querySelector('span').textContent = state === 'err' ? (msg || t('connDown')) : state === 'live' ? t('connRefreshing') : t('connOk')
-  if (state === 'live') {
-    clearTimeout(connTimer)
-    connTimer = setTimeout(() => setConn('ok'), 1100)
-  }
+  // Any later state cancels the pending 'live' → 'ok' flip, or a poll failing
+  // faster than 1.1s gets its error badge overwritten with "connected".
+  clearTimeout(connTimer)
+  if (state === 'live') connTimer = setTimeout(() => setConn('ok'), 1100)
 }
 
 let toastTimer = null
