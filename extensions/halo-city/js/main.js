@@ -384,12 +384,16 @@ conn.load()
   const tryList = (conn.api && conn.api !== location.origin)
     ? [location.origin, conn.api]
     : [conn.api || location.origin]
+  let lastErr = null
   for (const api of tryList) {
     try {
       const s = await probe(api, conn.token)
       conn.api = api
       hideSetup(); boot(s); return
-    } catch { /* try next candidate */ }
+    } catch (e) { lastErr = e /* try next candidate */ }
   }
   showSetup()
+  // say why the stored / #token= token didn't connect (wrong token, rate
+  // limited, server down) instead of a silent, pre-filled form
+  $('setup-err').textContent = lastErr?.message || t('connFail')
 })()
