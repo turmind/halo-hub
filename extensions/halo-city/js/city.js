@@ -889,7 +889,10 @@ export class City {
     for (let x = Math.floor(view.x / gap) * gap - drift; x < view.x + view.w; x += gap) {
       const w = 8 + (Math.floor(x / gap) % 3) * 4
       px(ctx, Math.round(x), foamY, w, 1, foam)                           // foam crest
-      px(ctx, Math.round(x) + 2, foamY + 1, w - 4, 1, alpha(foam, 0.45))  // thinner trailing line
+      // thinner trailing line, foam-colored: it was alpha(foam, 0.45) — an
+      // alpha of an rgba() string, i.e. an invalid color canvas ignored, so it
+      // always painted with the crest's fill. Kept as shipped, minus the parse.
+      px(ctx, Math.round(x) + 2, foamY + 1, w - 4, 1, foam)
     }
   }
 

@@ -81,12 +81,14 @@ export function alpha(hex, a) {
   // 8-bit channels anyway, so this is bit-identical — and it collapses the
   // animated call sites (per-star twinkle, per-wave shimmer) from unbounded
   // float inputs into ≤256 buckets per color.
+  // Emitted as #rrggbbaa, not rgba(): the same 8-bit color, but canvas parses
+  // it ~1/3 faster, and ~3k alpha fills are set per frame.
   const q = (a * 255 + 0.5) | 0
   const m = _sub(_alphaCache, hex)
   let v = m.get(q)
   if (v === undefined) {
     const [r, g, b] = rgbOf(hex)
-    v = `rgba(${r},${g},${b},${q / 255})`
+    v = toHex(r, g, b) + _hex2[q]
     m.set(q, v)                    // bounded: q ∈ 0..255
   }
   return v
