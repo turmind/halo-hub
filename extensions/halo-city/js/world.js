@@ -8,7 +8,6 @@ import { Citizen } from './citizen.js'
 import { Traffic } from './traffic.js'
 import { sky, alpha, STATUS_COLOR } from './palette.js'
 import { pushEvent } from './ticker.js'
-import { fnv } from './util.js'
 
 export class World {
   constructor(canvas) {
@@ -205,7 +204,7 @@ export class World {
       if (p.x >= view.x - 60 && p.x <= view.x + view.w + 60 &&
           p.y >= view.y - 4 && p.y <= view.y + view.h + 56) list.push(cz)
     }
-    list.sort((a, c) => (a._sy - c._sy) || (fnv(a.id) % 13) - (fnv(c.id) % 13))
+    list.sort((a, c) => (a._sy - c._sy) || a.tieBreak - c.tieBreak)
     for (const cz of list) cz.draw(ctx)
 
     // facades + signage on top (same cull as interiors)

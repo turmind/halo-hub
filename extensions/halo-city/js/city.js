@@ -35,6 +35,11 @@ const DESK_XS = [64, 104, 144]          // desk anchors (work floors)
 const STATION_X = 30
 const STAIR_X = 12
 const DOOR_X = INNER_W - 22
+// rest-amenity anchors (interior x), read-only: lobby and commons floors
+const LOUNGE = Object.freeze({ coffee: 40, fridge: 62, teabar: 86, shelf: 110, couch: 132, door: DOOR_X })
+const COMMONS_SPOTS = Object.freeze({ fridge: 22, teabar: 48, coffee: 70, shelf: 92, couch: 118, extra: 150, balconyDoor: INNER_W - 6 })
+/** Number key for the (floor, desk x) seat index — desk x < 256. */
+const seatKey = (floor, x) => floor * 256 + x
 
 // flavor prop per work floor, rolled per floor
 const FLOOR_FLAVOR = ['plant', 'shelf', 'whiteboard', 'cooler']
@@ -53,6 +58,12 @@ const WALL_TOP = GREEN_BOT, BEACH_TOP = 48, BEACH_BOT = 62
 /** Highest pixel of the whole street band (the lamppost head; alley props top
  *  out at -31, the bus shelter at -25). A view ending above it sees no street. */
 export const STREET_TOP = -44
+
+// Fixed hash rolls for the star field (x, y, twinkle per star) and the sea
+// sparkles (depth, x per dot): the same sequence every frame, so rolled once.
+const rolls = (seed, n) => { const r = rng(seed); return Float64Array.from({ length: n }, r) }
+const STARS = rolls(99, 110 * 3)
+const SPARKLES = rolls(151, 70 * 2)
 
 function px(ctx, x, y, w, h, c) {
   ctx.fillStyle = c
@@ -197,7 +208,12 @@ export class Building {
       next.set(s.id, seat)
     }
     this._seatBy = next
-    this._seatIndexDirty = true
+    // per-frame lookups, rebuilt here (not per frame): the seat on a desk
+    // (floor, x) and the skill station on a floor (≤ 1: stations round-robin
+    // over distinct work floors)
+    this._seatAt = new Map()
+    for (const seat of next.values()) this._seatAt.set(seatKey(seat.floor, seat.x), seat)
+    this._stationAt = new Map(this.stations.map((st) => [st.floor, st]))
     const r = rng(this.seed)
     this.roofKind = ['tank', 'ac', 'antenna', 'billboard'][Math.floor(r() * 4)]
   }
@@ -242,12 +258,10 @@ export class Building {
   /** Lobby anchors (interior x). The lobby is now a full public floor (#4):
    *  it carries the same kitchen set as a commons (fridge/tea/coffee/books/
    *  couch) so the nearest public floor can satisfy every rest activity. */
-  lounge() { return { coffee: 40, fridge: 62, teabar: 86, shelf: 110, couch: 132, door: DOOR_X } }
+  lounge() { return LOUNGE }
   /** Commons-floor anchors (interior x). Coffee added so every public floor
    *  pours coffee (#4). */
-  commonsSpots() {
-    return { fridge: 22, teabar: 48, coffee: 70, shelf: 92, couch: 118, extra: 150, balconyDoor: INNER_W - 6 }
-  }
+  commonsSpots() { return COMMONS_SPOTS }
   /** Public/rest floors = the lobby (-1) + every commons. The lobby is a
    *  full commons-equivalent, so it's always a candidate (#4). */
   restFloors() {
@@ -389,16 +403,10 @@ export class Building {
     wallArt(ctx, this.ix(48), cy + 7, f.artKind, this.itr.accent)
     ceilLamp(ctx, this.ix(64), cy + 1, lit)
     ceilLamp(ctx, this.ix(124), cy + 1, lit)
-    const st = this.stations.find((s) => s.floor === idx)
+    const st = this._stationAt.get(idx)
     if (st) station(ctx, this.ix(st.x), fy, st.kind, st.glow, t, this.itr.accent)
-    // seat lookup indexed by floor|x (rebuilt on update(), not per frame)
-    if (this._seatIndexDirty || !this._seatAt) {
-      this._seatAt = new Map()
-      for (const s of this._seatBy.values()) this._seatAt.set(s.floor + '|' + s.x, s)
-      this._seatIndexDirty = false
-    }
     for (const dx of DESK_XS) {
-      const seat = this._seatAt.get(idx + '|' + dx)
+      const seat = this._seatAt.get(seatKey(idx, dx))
       desk(ctx, this.ix(dx), fy, t, seat ? !!seat.busy : false, this.itr.accent, seat ? !!seat.game : false)
     }
     // per-floor flavor prop at the right end
@@ -427,7 +435,6 @@ export class Building {
     px(ctx, this.ix(INNER_W) - 2, fy - 32, 4, 32, alpha(C.cyan, 0.18))
     px(ctx, this.ix(INNER_W) - 3, fy - 34, 6, 2, this.mat.frame)
     // the balcony itself (slab + railing + ash bin + shrub)
-    const b = this.balcony(idx)
     const bx = this.x0() + OUTER_W
     px(ctx, bx, fy, BALCONY_W, 4, shade(this.mat.base, 0.3))
     px(ctx, bx, fy, BALCONY_W, 1, tint(this.mat.base, 0.15))
@@ -593,10 +600,9 @@ export class City {
 
     if (sk.amb < 0.5) {
       const a = (0.5 - sk.amb) * 2
-      const r = rng(99)
       for (let i = 0; i < 110; i++) {
-        const x = view.x + r() * view.w, y = view.y + r() * view.h * 0.6
-        const tw = r()
+        const x = view.x + STARS[i * 3] * view.w, y = view.y + STARS[i * 3 + 1] * view.h * 0.6
+        const tw = STARS[i * 3 + 2]
         ctx.fillStyle = alpha('#ffffff', (0.35 + tw * 0.45) * a)
         ctx.fillRect(Math.round(x), Math.round(y), tw > 0.92 ? 2 : 1, tw > 0.92 ? 2 : 1)
       }
@@ -733,18 +739,30 @@ export class City {
     this.drawBeach(ctx, t, sk, view, BEACH_TOP, BEACH_BOT)
     this.drawSea(ctx, t, sk, view, BEACH_BOT)
 
-    // alley loadouts: lamppost + two rolled amenities per gap (incl. the ends)
+    // alley loadouts: lamppost + two rolled amenities per gap (incl. the ends).
+    // A gap's whole kit (lamp cone at gx-34 … second prop at gx+36) sits well
+    // inside gx ± ALLEY, so gaps outside the view skip entirely.
     const n = this.order.length
     for (let i = 0; i <= n; i++) {
       const gx = i * (OUTER_W + ALLEY) - ALLEY / 2
-      const r = rng(fnv('alley' + i))
+      if (gx + ALLEY < view.x || gx - ALLEY > view.x + view.w) continue
+      const [a, b] = this.alleyKinds(i)
       this.lamppost(ctx, gx - 18, sk, t)
-      const kinds = [...ALLEY_KINDS]
-      const a = kinds.splice(Math.floor(r() * kinds.length), 1)[0]
-      const b = kinds.splice(Math.floor(r() * kinds.length), 1)[0]
       this.alleyProp(ctx, a, gx + 6, t)
       if (i !== 0 && i !== n) this.alleyProp(ctx, b, gx + 22, t)  // ends get just one
     }
+  }
+
+  /** The two amenities rolled for alley gap i — a pure function of i, rolled
+   *  once and memoized instead of re-rolled (and re-allocated) every frame. */
+  alleyKinds(i) {
+    const memo = this._alleyKinds || (this._alleyKinds = [])
+    if (!memo[i]) {
+      const r = rng(fnv('alley' + i))
+      const kinds = [...ALLEY_KINDS]
+      memo[i] = [kinds.splice(Math.floor(r() * kinds.length), 1)[0], kinds.splice(Math.floor(r() * kinds.length), 1)[0]]
+    }
+    return memo[i]
   }
 
   /** Seaside greenway between the road and the sea wall: a grassy lawn with a
@@ -956,11 +974,10 @@ export class City {
     }
 
     // scattered specular sparkles — tiny bright dots twinkling on the surface
-    const sr = rng(151)
     for (let i = 0; i < 70; i++) {
-      const sf = sr()
+      const sf = SPARKLES[i * 2]
       const sy = water + 4 + sf * sf * depth
-      const sx = view.x + sr() * view.w
+      const sx = view.x + SPARKLES[i * 2 + 1] * view.w
       const tw = Math.sin(t * 2 + i * 1.7)
       if (sy >= bottom || tw < 0.4) continue
       ctx.fillStyle = alpha(night ? '#cfe0ff' : '#ffffff', (0.12 + sf * 0.24) * tw)

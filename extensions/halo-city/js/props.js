@@ -608,19 +608,20 @@ export function catTree(ctx, x, y, t) {
 
 // ── Architecture bits ────────────────────────────────────────────────────
 // Window-glass gradients are cached: every pane used to allocate a fresh
-// LinearGradient per frame (~60+/frame). Keyed on geometry + the sky colors,
-// which only change on the 5s sky quantum, so steady-state allocs are zero.
+// LinearGradient per frame (~60+/frame). One entry per pane y (number key, no
+// per-pane key string); the entry is rebuilt when h or the sky colors differ,
+// and those only change on the 5s sky quantum, so steady-state allocs are zero.
 const _paneGrads = new Map()
 function paneGradient(ctx, y, h, skyTop, skyBot) {
-  const key = `${y}|${h}|${skyTop}|${skyBot}`
-  let g = _paneGrads.get(key)
-  if (!g) {
-    g = ctx.createLinearGradient(0, y, 0, y + h)
+  let e = _paneGrads.get(y)
+  if (!e || e.h !== h || e.top !== skyTop || e.bot !== skyBot) {
+    const g = ctx.createLinearGradient(0, y, 0, y + h)
     g.addColorStop(0, skyTop); g.addColorStop(1, skyBot)
-    if (_paneGrads.size > 256) _paneGrads.clear()
-    _paneGrads.set(key, g)
+    if (!e && _paneGrads.size > 256) _paneGrads.clear()
+    e = { g, h, top: skyTop, bot: skyBot }
+    _paneGrads.set(y, e)
   }
-  return g
+  return e.g
 }
 
 /** Interior window with the live sky visible through it. */

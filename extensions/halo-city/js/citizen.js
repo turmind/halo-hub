@@ -79,6 +79,7 @@ export class Citizen {
     this.lastTool = ''
     this.bubble = null
     this._sx = null; this._sy = null
+    this.tieBreak = fnv(session.id) % 13   // stable draw order among equal-y citizens
 
     this.sync(session, true)
     if (this.placed) this.snapToTarget()    // first-paint: drop straight at the target, no walk
