@@ -14,6 +14,7 @@ dist/               Build output — packaged zips, not committed
 
 - One directory per item. The directory name is the item's id.
 - Each item is packaged as a standalone zip. Zips are published as GitHub release assets, not committed to the repo.
+- An extension documents itself: `README.md` at its root (what it opens, requirements, usage), `DESIGN.md` for internals when worth it. Both ship in the zip; once installed, Halo's built-in `halo` skill points agents at `~/.halo/global/extensions/<id>/README.md`. Instructions an agent should follow go in an extension skill, `extensions/<id>/skills/<id or id-…>/SKILL.md`, which users enable per agent. Nothing is injected into prompts automatically.
 
 ## Catalog
 
