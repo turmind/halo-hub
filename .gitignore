@@ -1,6 +1,7 @@
 dist/
 node_modules/
 .DS_Store
+__pycache__/
 # Halo workspace state (sessions, sqlite, runtime.lock) — present when this repo is opened as a workspace.
 # Root only: workspaces/<id>/.halo/ is shared content and must stay tracked.
 /.halo/

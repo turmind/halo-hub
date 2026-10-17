@@ -1,0 +1,4 @@
+displayName_zh: AgentCore 部署
+description: Deploy a Halo workspace to Amazon Bedrock AgentCore Runtime (A2A or HTTP, optional EventBridge schedule + IM push) — needs Halo ≥ 2.0.2, AWS credentials, docker buildx (arm64).
+description_zh: 把 Halo workspace 部署到 Amazon Bedrock AgentCore Runtime（A2A 或 HTTP，可选 EventBridge 定时 + IM 推送）。需要 Halo ≥ 2.0.2、AWS 凭证、docker buildx（arm64）。
+version: 1.0.0

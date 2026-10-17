@@ -55,6 +55,7 @@ Model provider configs — the same yamls Halo bundles in `packages/server/templ
 | id | What |
 |---|---|
 | `web-search` | Real-time web search — fast (Nova grounding) / deep (GPT-5.6 web_search on Bedrock Mantle); needs AWS credentials |
+| `agentcore-deploy` | Deploy a workspace to Amazon Bedrock AgentCore Runtime — A2A or HTTP, optional EventBridge schedule + IM push; needs Halo ≥ 2.0.2, AWS credentials, docker buildx (arm64) |
 
 **Workspaces** (`workspaces/<id>/`, release tag `ws-<id>-v<version>`)
 
