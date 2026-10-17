@@ -78,9 +78,12 @@ One tag = one release = one zip, tagged `<id>-v<version>`:
 
 ```bash
 # bump "version" in extensions/<id>/halo-extension.json, commit, then:
-node scripts/pack.mjs extensions/<id>          # → dist/<id>-<version>.zip
+node scripts/pack.mjs extensions/<id>          # → dist/<id>-<version>.zip + dist/<id>-<version>.update.json
 gh release create <id>-v<version> dist/<id>-<version>.zip --title "<id> v<version>"
+cp dist/<id>-<version>.update.json extensions/<id>/update.json   # then commit and push
 ```
+
+`extensions/<id>/update.json` is what Halo ≥ 2.0.2 reads to check for and install updates (zip `url` + `sha256`), so commit it only after the release is up. `minHalo` is not generated: edit it by hand in the committed `update.json` and `pack.mjs` carries it over.
 
 `pack.mjs` needs only Node and the system `zip`; it checks that the manifest `id` matches the directory name, the `version` is semver, `entry` exists, and the `activity` (activity-bar entry) and `chatbar` (chat-input toolbar button; `height` 80–480, default 160) blocks are well-formed, their `icon` must exist — the same rules and messages as the host's registry. Repo-maintenance files (`fetch-deps.sh`, `build.sh`) are left out of the zip.
 

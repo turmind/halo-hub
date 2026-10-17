@@ -1,0 +1,7 @@
+{
+  "id": "voice-input",
+  "version": "1.0.0",
+  "url": "https://github.com/turmind/halo-hub/releases/download/voice-input-v1.0.0/voice-input-1.0.0.zip",
+  "sha256": "8d3b60164ce51ebd9036d180752f397e31e124845502d1cd7e18bab7ce375578",
+  "minHalo": "1.6.5"
+}

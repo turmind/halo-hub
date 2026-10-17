@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // usage: node scripts/pack.mjs extensions/glb   → dist/glb-1.0.0.zip
 //        node scripts/pack.mjs models           → dist/models-<YYYY.MM.DD>.zip (today, UTC)
-import { readFileSync, readdirSync, mkdirSync, existsSync, rmSync, statSync } from 'node:fs';
+//        node scripts/pack.mjs skills/web-search → dist/skill-web-search-<config.yaml version>.zip
+import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, rmSync, statSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 // Manifest rules copied from the Halo server (halo-agent packages/server/src/extensions/registry.ts, parseManifest +
 // parseSettings — the source of truth; copy changes from there). A host lists a manifest that breaks one as an error
@@ -15,11 +17,31 @@ const CAPABILITIES = ['save', 'media', 'transcribe', 'fs-read', 'stt-local'];
 const PLATFORMS = ['web', 'desktop-mac', 'desktop-win', 'desktop-linux'];
 const SETTING_KEY_RE = /^[a-z][a-z0-9_]{0,63}$/;
 const SETTING_TYPES = ['string', 'int', 'float', 'boolean', 'enum'];
+// update.json is read from raw.githubusercontent.com but the zip lives on the release host, so its url must be absolute.
+const RELEASE_BASE = 'https://github.com/turmind/halo-hub/releases/download';
 
 const dir = resolve(process.argv[2] ?? '');
 
 if (basename(dir) === 'models' && !existsSync(`${dir}/halo-extension.json`)) packModels();
+else if (basename(resolve(dir, '..')) === 'skills' && existsSync(`${dir}/SKILL.md`)) packSkill();
 else packExtension();
+
+/** skills/<id> → dist/skill-<id>-<version>.zip, version = config.yaml's top-level `version:`. Files at the zip root
+ *  (the directory is the install); tests/ and __pycache__/ stay out. */
+function packSkill() {
+  const id = basename(dir);
+  if (!ID_RE.test(id)) { console.error(`skill id "${id}" must match ${ID_RE.source}`); process.exit(1); }
+  const cfg = existsSync(`${dir}/config.yaml`) ? readFileSync(`${dir}/config.yaml`, 'utf8') : '';
+  const version = cfg.match(/^version:\s*['"]?([^'"\s#]+)/m)?.[1];
+  if (!version || !VERSION_RE.test(version)) { console.error(`${id}/config.yaml: needs a top-level semver \`version:\``); process.exit(1); }
+  const name = readFileSync(`${dir}/SKILL.md`, 'utf8').match(/^---\n[\s\S]*?^name:\s*(\S+)[\s\S]*?^---/m)?.[1];
+  if (name !== id) { console.error(`${id}/SKILL.md: frontmatter name "${name}" != directory "${id}"`); process.exit(1); }
+  mkdirSync('dist', { recursive: true });
+  const out = resolve(`dist/skill-${id}-${version}.zip`);
+  rmSync(out, { force: true });
+  execFileSync('zip', ['-r', '-X', '-q', out, '.', '-x', 'tests/*', '*__pycache__/*', '*.pyc', '.DS_Store'], { cwd: dir, stdio: 'inherit' });
+  console.log(out);
+}
 
 function packExtension() {
   if (!existsSync(`${dir}/halo-extension.json`)) { console.error('usage: pack.mjs extensions/<id>  (needs halo-extension.json) | pack.mjs models'); process.exit(1); }
@@ -31,8 +53,21 @@ function packExtension() {
   const out = resolve(`dist/${m.id}-${m.version}.zip`);
   // zip contents at the archive root (no wrapper dir) — matches what the installer expects; -X drops extra attrs, -r recursive.
   // Build inputs (src/, package*.json, build.sh, fetch-deps.sh, node_modules/) stay out of the zip.
-  execFileSync('zip', ['-r', '-X', '-q', out, '.', '-x', 'fetch-deps.sh', 'build.sh', 'node_modules/*', 'src/*', 'package.json', 'package-lock.json', '.DS_Store'], { cwd: dir, stdio: 'inherit' });
+  execFileSync('zip', ['-r', '-X', '-q', out, '.', '-x', 'fetch-deps.sh', 'build.sh', 'node_modules/*', 'src/*', 'package.json', 'package-lock.json', 'update.json', '.DS_Store'], { cwd: dir, stdio: 'inherit' });
   console.log(out);
+  // Written to dist/, never to extensions/<id>/update.json: re-packing a version changes the zip bytes (and sha256), so only
+  // the copy cp'd in after `gh release create` may sit in the repo. minHalo is inherited from that committed copy.
+  const committed = existsSync(`${dir}/update.json`) ? JSON.parse(readFileSync(`${dir}/update.json`, 'utf8')) : {};
+  const update = {
+    id: m.id,
+    version: m.version,
+    url: `${RELEASE_BASE}/${m.id}-v${m.version}/${m.id}-${m.version}.zip`,
+    sha256: createHash('sha256').update(readFileSync(out)).digest('hex'),
+    ...(committed.minHalo !== undefined && { minHalo: committed.minHalo }),
+  };
+  const updateOut = resolve(`dist/${m.id}-${m.version}.update.json`);
+  writeFileSync(updateOut, `${JSON.stringify(update, null, 2)}\n`);
+  console.log(updateOut);
 }
 
 /** First rule the manifest breaks, in registry.ts order (same wording as the host's error row), or null. */
@@ -103,6 +138,7 @@ function manifestError(m) {
   }
   if (m.homepage !== undefined && (typeof m.homepage !== 'string' || !/^https?:\/\//.test(m.homepage))) return 'homepage must be an http(s) URL';
   if (m.license !== undefined && typeof m.license !== 'string') return 'license must be a string';
+  if (m.source !== undefined && (typeof m.source !== 'string' || !/^https:\/\/\S+$/.test(m.source) || !URL.canParse(m.source))) return 'source must be an https URL (of the update.json)';
   return null;
 }
 
