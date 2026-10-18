@@ -98,7 +98,10 @@ const t = (k, ...a) => { const v = T[lang][k]; return typeof v === 'function' ? 
 // Picker values are what meeting.json stores (kept stable for old packages); TX_LANG is what the proxy gets. Auto =
 // IdentifyMultipleLanguages over the server's auto_languages (default zh-CN,zh-HK,en-US — Cantonese must be a candidate
 // or it comes out as garbled Mandarin); Mandarin / Cantonese = that language + English, identified per stretch.
-const LANGS = ['auto', 'zh-CN', 'zh-HK', 'en-US'];
+const LANGS = ['zh-CN', 'auto', 'zh-HK', 'en-US'];
+// New meetings, packages without a recorded language and any invalid value fall back to this; a package's recorded
+// meeting.asr.language always wins (older packages keep 'auto').
+const DEFAULT_LANG = 'zh-CN';
 const TX_LANG = { 'zh-CN': 'zh-CN,en-US', 'zh-HK': 'zh-HK,en-US' };
 const SHOTS = [0, 10, 20, 30, 60];
 
@@ -333,7 +336,7 @@ async function loadPackage() {
   let raw = null;
   try { raw = new Uint8Array((await fsCall('read', 'meeting.json')).buffer); } catch (e) { if (e.code !== 'not-found') { setNotice('pkg', () => t('pkgBad', e.message), 'err'); renderControls(); return; } }
   if (!raw) {
-    meeting = { format: 'htrans', version: 1, title, createdAt: new Date().toISOString(), status: 'idle', runs: [], shotIntervalSec: 0, asr: { engine: 'aws-transcribe', language: 'auto' } };
+    meeting = { format: 'htrans', version: 1, title, createdAt: new Date().toISOString(), status: 'idle', runs: [], shotIntervalSec: 0, asr: { engine: 'aws-transcribe', language: DEFAULT_LANG } };
     await Promise.all([saveMeeting(), enqueue('README.md', () => fsCall('write', 'README.md', enc(README)))]);
   } else {
     try { meeting = JSON.parse(new TextDecoder().decode(raw)); if (!Array.isArray(meeting.runs)) meeting.runs = []; } catch (e) { setNotice('pkg', () => t('pkgBad', e.message), 'err'); renderControls(); return; }
@@ -356,7 +359,7 @@ async function loadPackage() {
   }
   $('shot').value = String(meeting.shotIntervalSec ?? 0);
   if (meeting.asr?.language) $('lang').value = meeting.asr.language;
-  if (!$('lang').value) $('lang').value = 'auto';
+  if (!$('lang').value) $('lang').value = DEFAULT_LANG;
   entries.sort((a, b) => (a.t ?? 0) - (b.t ?? 0)); // stable; packages from <= 1.0.2 may have shots before earlier speech
   for (const e of entries) addEntry(e);
   stick = true;
@@ -747,9 +750,9 @@ function applyLang() {
   const sel = $('shot'), cur = sel.value || '0';
   sel.replaceChildren(...SHOTS.map((s) => new Option(s ? `${s} ${t('secs')}` : t('off'), String(s))));
   sel.value = cur;
-  const ls = $('lang'), lcur = ls.value || 'auto';
+  const ls = $('lang'), lcur = ls.value || DEFAULT_LANG;
   ls.replaceChildren(...LANGS.map((v) => new Option(t('langs')[v], v)));
-  ls.value = LANGS.includes(lcur) ? lcur : 'auto';
+  ls.value = LANGS.includes(lcur) ? lcur : DEFAULT_LANG;
   $('langHelp').title = $('langHelp').ariaLabel = t('langHelp');
   $('langTip').replaceChildren(...t('langTip').map((x) => Object.assign(document.createElement('li'), { textContent: x })));
   partialEl.dataset.ph = t('speaking');
