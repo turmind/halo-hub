@@ -47,6 +47,7 @@ const T = {
     prompt: (p) => `Please read ${p}/transcript.md (the meeting may still be in progress) and summarize what has been said so far`,
     appName: 'Meeting Recorder', copyShort: 'Copy prompt', refresh: 'Refresh microphone list', elapsed: 'Recorded time',
     shotAlt: (ts) => `Screenshot at ${ts}`, shotFail: 'Screenshot unavailable', closeHint: 'Click or press Esc to close',
+    speaker: (n) => `Speaker ${n}`,
     sysTip: 'After Start a share dialog opens: pick a tab or the entire screen and tick “Share audio”.',
     capNoSys: 'This browser can’t record system / video sound (needs desktop Chrome / Edge, or the Halo desktop app).',
     capNone: 'This browser can’t record system / video sound or take screenshots (needs desktop Chrome / Edge, or the Halo desktop app).',
@@ -85,6 +86,7 @@ const T = {
     prompt: (p) => `请阅读 ${p}/transcript.md（会议可能仍在进行），概括到目前为止的内容`,
     appName: '会议录音', copyShort: '复制提示', refresh: '刷新麦克风列表', elapsed: '已录时长',
     shotAlt: (ts) => `截图 ${ts}`, shotFail: '截图无法加载', closeHint: '点击或按 Esc 关闭',
+    speaker: (n) => `说话人 ${n}`,
     sysTip: '点开始后会弹出共享窗口：选标签页或整个屏幕，并勾选「分享音频」。',
     capNoSys: '此浏览器不能录系统 / 视频声音（需 Chrome / Edge 电脑版，或 Halo 桌面客户端）。',
     capNone: '此浏览器不能录系统 / 视频声音，也不能截屏（需 Chrome / Edge 电脑版，或 Halo 桌面客户端）。',
@@ -268,7 +270,15 @@ function addEntry(e) {
     box.append(img);
     row.append(box);
     io.observe(box);
-  } else row.append(el('span', 'tx', e.text));
+  } else {
+    if (e.speaker) {
+      const spk = el('span', 'spk', t('speaker', e.speaker));
+      spk.dataset.n = e.speaker;
+      spk.dataset.c = (e.speaker - 1) % 6; // style.css palette --spk-0…5
+      row.append(spk);
+    }
+    row.append(el('span', 'tx', e.text));
+  }
   log.insertBefore(row, partialEl);
   maybeScroll();
 }
@@ -298,8 +308,8 @@ Recorded by the Halo "Meeting Recorder" extension. 由 Halo「Meeting Recorder�
 
 | File / 文件 | What it is / 说明 |
 |---|---|
-| \`transcript.md\` | **Read this. / 请读这个。** Timeline \`[HH:MM:SS] text\` and screenshot lines \`[HH:MM:SS] 📷 shots/NNNNNN.jpg\`. Offsets count from \`meeting.json\`.startedAt. 时间线，偏移量从 startedAt 起算。 |
-| \`transcript.jsonl\` | Same content, one JSON per line: \`{"t","end","at","text","lang"}\` or \`{"t","at","shot"}\` (\`t\`/\`end\` = ms since startedAt, \`at\` = epoch ms). 同样内容，机器可读。 |
+| \`transcript.md\` | **Read this. / 请读这个。** Timeline \`[HH:MM:SS] Speaker N: text\` (or \`[HH:MM:SS] text\` when no speaker is known) and screenshot lines \`[HH:MM:SS] 📷 shots/NNNNNN.jpg\`. Offsets count from \`meeting.json\`.startedAt. 时间线，偏移量从 startedAt 起算；\`Speaker N:\` 是说话人编号。 |
+| \`transcript.jsonl\` | Same content, one JSON per line: \`{"t","end","at","text","lang","speaker"?}\` or \`{"t","at","shot"}\` (\`t\`/\`end\` = ms since startedAt, \`at\` = epoch ms, \`speaker\` = 1, 2, …). 同样内容，机器可读；\`speaker\` 为说话人编号（可选）。 |
 | \`meeting.json\` | Metadata: \`status\`, \`startedAt\`, \`runs[]\` (one per start/resume; \`interrupted:true\` = cut off by a crash or reload), screenshot interval, language. 元数据。 |
 | \`audio/NNN.webm\` | Audio of run NNN (opus). 每次录制一个音频文件。 |
 | \`shots/NNNNNN.jpg\` | Screenshots; the number is the offset in seconds since startedAt. 截图，文件名 = 距 startedAt 的秒数。 |
@@ -313,6 +323,8 @@ Recorded by the Halo "Meeting Recorder" extension. 由 Halo「Meeting Recorder�
   要把截图和讨论对应起来，用文件名里的秒数，去看 \`transcript.md\` 中相近时间的内容。
 - The transcript is machine output from Amazon Transcribe and may contain errors (names, numbers, mixed languages). Do not treat it as verbatim.
   转写由 Amazon Transcribe 机器生成，可能有错误（人名、数字、中英混说），请勿当作逐字稿。
+- \`Speaker N\` / \`speaker\` only tells voices apart — it is a number, not a name, and nobody is identified. Numbers hold within one transcription stream only: after a pause / resume or a reconnect the same person may get a different number. Lines without a speaker come from a Halo server whose transcription doesn't label speakers yet (or from an older recording).
+  \`Speaker N\` / \`speaker\` 只用来区分不同的声音，是编号不是姓名，不识别具体是谁。编号只在一条转写流内有效：暂停后继续、断线重连之后，同一个人可能换编号。没有说话人的行来自尚不支持说话人标签的 Halo 服务端（或更早的录音）。
 - Write your own notes to \`notes.md\`; leave the other files untouched (the recorder is still appending to them while recording).
   请把笔记写到 \`notes.md\`，不要改动其他文件（录制中会继续追加）。
 `;
@@ -432,7 +444,7 @@ async function takeShot(r) {
 // no earlier speech can still arrive.
 const heldShots = [];
 function writeEntry(e) {
-  appendText('transcript.md', `[${fmt(e.t)}] ${e.shot ? `📷 ${e.shot}` : e.text}\n`);
+  appendText('transcript.md', `[${fmt(e.t)}] ${e.shot ? `📷 ${e.shot}` : e.speaker ? `Speaker ${e.speaker}: ${e.text}` : e.text}\n`);
   appendText('transcript.jsonl', JSON.stringify(e) + '\n');
   addEntry(e);
 }
@@ -507,7 +519,8 @@ function onFinal(m) {
   const at = Math.round(tx.startWall + m.start * 1000);
   const off = at - meeting.startedAt;
   releaseShots(at);
-  writeEntry({ t: off, end: Math.round(tx.startWall + m.end * 1000 - meeting.startedAt), at, text, lang: m.lang || $('lang').value });
+  const speaker = m.speaker == null ? NaN : Number(m.speaker) + 1; // Transcribe's "0", "1"… → Speaker 1, 2…; older proxies send none
+  writeEntry({ t: off, end: Math.round(tx.startWall + m.end * 1000 - meeting.startedAt), at, text, lang: m.lang || $('lang').value, ...(speaker > 0 ? { speaker } : {}) });
 }
 
 function onPcm(buf) {
@@ -728,6 +741,7 @@ function applyLang() {
   $('lightbox').title = t('closeHint');
   $('lightbox').dataset.msg = t('shotFail');
   for (const box of log.querySelectorAll('.thumb')) { box.firstChild.alt = t('shotAlt', box.dataset.ts); box.dataset.msg = t('shotFail'); }
+  for (const spk of log.querySelectorAll('.spk')) spk.textContent = t('speaker', spk.dataset.n);
   renderNotices();
   $('jump').textContent = t('jump');
   const sel = $('shot'), cur = sel.value || '0';

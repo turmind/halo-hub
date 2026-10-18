@@ -3,7 +3,7 @@
 Halo canvas extension that turns a **`<title>.htrans/` folder** into a small meeting-recorder app. Click the folder in the Halo file tree to open it.
 
 - Inputs: a microphone, optionally the **system / video sound** of a shared screen, window or tab, optionally **timed screenshots** (off / 10 s / 20 s / 30 s / 60 s) of that share.
-- **Live captions** from Amazon Transcribe streaming, reached through Halo's server-side proxy (`/api/transcribe/stream`). Nothing is transcribed in the browser and no model is downloaded.
+- **Live captions** from Amazon Transcribe streaming, reached through Halo's server-side proxy (`/api/transcribe/stream`), each sentence labelled "Speaker 1", "Speaker 2", … (voices told apart, not named; needs a Halo whose proxy sends `speaker`, older ones give unlabelled lines). Nothing is transcribed in the browser and no model is downloaded.
 - Everything is appended to the folder as it happens, so a crash or a closed tab loses nothing, and a Halo agent can read `transcript.md` **while the meeting is still running**.
 - Playback is never involved: the audio graph is not connected to the speakers.
 
@@ -31,8 +31,8 @@ Halo canvas extension that turns a **`<title>.htrans/` folder** into a small mee
 <title>.htrans/
   meeting.json       status (idle|recording|stopped), startedAt, runs[] {startedAt, endedAt, audio, sources, interrupted?}, shotIntervalSec, asr
   README.md          agent-facing explanation (bilingual)
-  transcript.md      "[HH:MM:SS] text" and "[HH:MM:SS] 📷 shots/000750.jpg", appended live
-  transcript.jsonl   {"t","end","at","text","lang"} / {"t","at","shot"}, appended live
+  transcript.md      "[HH:MM:SS] Speaker N: text" ("[HH:MM:SS] text" without a speaker) and "[HH:MM:SS] 📷 shots/000750.jpg", appended live
+  transcript.jsonl   {"t","end","at","text","lang","speaker"?} / {"t","at","shot"}, appended live
   audio/001.webm     one opus file per recording run (chunks appended every ~5 s)
   shots/000750.jpg   screenshot, named by offset seconds
   notes.md           optional, written later by an agent
@@ -42,7 +42,7 @@ Offsets are `wall clock − meeting.json.startedAt`. Pause ends the current run;
 
 ## How it works
 
-`getUserMedia` (mic, echo cancellation + noise suppression) and the audio track of `getDisplayMedia` are mixed in one `AudioContext` that is never connected to `destination`. The mix feeds a `MediaRecorder` (opus/webm, 32 kbps, 5 s slices) and an `AudioWorklet` (`pcm-worklet.js`) that downsamples to 16 kHz mono s16le in ~150 ms batches; those go to the proxy WebSocket as binary frames. `partial` results are shown in grey, only `final` ones are written. The WebSocket is re-opened automatically (1 s backoff, capped at 30 s; 60 s after a credentials / permission error) and the recorder and screenshots keep running meanwhile; PCM produced while disconnected is dropped.
+`getUserMedia` (mic, echo cancellation + noise suppression) and the audio track of `getDisplayMedia` are mixed in one `AudioContext` that is never connected to `destination`. The mix feeds a `MediaRecorder` (opus/webm, 32 kbps, 5 s slices) and an `AudioWorklet` (`pcm-worklet.js`) that downsamples to 16 kHz mono s16le in ~150 ms batches; those go to the proxy WebSocket as binary frames. `partial` results are shown in grey, only `final` ones are written; a final's `speaker` ("0", "1"…, Transcribe's per-stream label) becomes `speaker: 1, 2…`, so after a pause / resume or a reconnect the same person may get a different number. The WebSocket is re-opened automatically (1 s backoff, capped at 30 s; 60 s after a credentials / permission error) and the recorder and screenshots keep running meanwhile; PCM produced while disconnected is dropped.
 
 Screenshots (`ImageCapture.grabFrame`, or a hidden `<video>` as a fallback) are JPEG q0.8, max 1600 px wide; with "skip unchanged frames" a 32×18 grayscale thumbnail is compared with the last kept frame and near-identical frames are dropped. A thumbnail is a fixed-ratio placeholder (the screenshot's ratio once known, 16:9 before) with a soft loading shimmer until the image has decoded, and "Screenshot unavailable" if it can't be read — never the browser's broken-image icon; the enlarged view behaves the same.
 

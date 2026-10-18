@@ -9,6 +9,7 @@
   --primary: var(--halo-primary, #2f6fed); --primary-fg: var(--halo-primary-foreground, #fff); --accent: var(--halo-primary, #6cb6ff);
   --ring: var(--halo-ring, #6cb6ff); --rec: var(--halo-destructive, #ff5d5d);
   --ok: #5fd17a; --warn: #e0c060;
+  --spk-0: #6cb6ff; --spk-1: #5fd17a; --spk-2: #f0a35e; --spk-3: #d2a8ff; --spk-4: #56d4c8; --spk-5: #ff8a9a;
   --border-strong: color-mix(in srgb, var(--muted) 45%, var(--border));
   --err-bg: color-mix(in srgb, var(--rec) 12%, transparent); --warn-bg: color-mix(in srgb, var(--warn) 12%, transparent);
 }
@@ -20,6 +21,7 @@
   --primary: var(--halo-primary, #0969da); --primary-fg: var(--halo-primary-foreground, #fff); --accent: var(--halo-primary, #0969da);
   --ring: var(--halo-ring, #0969da); --rec: var(--halo-destructive, #d1242f);
   --ok: #1a7f37; --warn: #9a6700;
+  --spk-0: #0969da; --spk-1: #1a7f37; --spk-2: #bc4c00; --spk-3: #8250df; --spk-4: #0a7d74; --spk-5: #cf222e;
   --border-strong: color-mix(in srgb, var(--muted) 65%, var(--border));
   --err-bg: color-mix(in srgb, var(--rec) 8%, transparent); --warn-bg: color-mix(in srgb, var(--warn) 10%, transparent);
 }
@@ -85,6 +87,10 @@ button.big.danger:hover:not(:disabled) { background: var(--err-bg); }
 .line, .partial { display: flex; gap: 12px; align-items: baseline; padding: 3px 0; font-size: 14px; line-height: 1.6; }
 .ts, .partial::before { flex: 0 0 auto; min-width: 10ch; color: var(--muted); opacity: .8; font: 12px/1.6 ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; user-select: none; }
 .tx { min-width: 0; max-width: 90ch; overflow-wrap: anywhere; white-space: pre-wrap; }
+/* speaker label: one of 6 hues by speaker number (data-c = (n-1) % 6), set per theme in :root */
+.spk { flex: 0 0 auto; padding: 0 7px; border-radius: 9px; font-size: 12px; line-height: 1.6; white-space: nowrap; color: var(--spk); background: color-mix(in srgb, var(--spk) 14%, transparent); }
+.spk[data-c="0"] { --spk: var(--spk-0); } .spk[data-c="1"] { --spk: var(--spk-1); } .spk[data-c="2"] { --spk: var(--spk-2); }
+.spk[data-c="3"] { --spk: var(--spk-3); } .spk[data-c="4"] { --spk: var(--spk-4); } .spk[data-c="5"] { --spk: var(--spk-5); }
 .line.shot { align-items: flex-start; padding: 6px 0; }
 /* screenshot = a fixed-ratio placeholder box; its <img> is only shown once decoded (data-state="loaded") */
 .thumb { position: relative; flex: 0 1 auto; width: 240px; max-width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 4px; background: var(--panel); overflow: hidden; }
