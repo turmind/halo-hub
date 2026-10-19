@@ -43,12 +43,13 @@ Model provider configs — the same yamls Halo bundles in `packages/server/templ
 
 | ids | Revision |
 |---|---|
-| `minimax` `zhipu` | `2026101002` |
+| `zhipu` | `2026101002` |
 | `kimi` | `2026101004` |
-| `anthropic` `aws-bedrock-claude-invoke` `aws-bedrock-mantle` `aws-bedrock-openai` `doubao` `openai` | `2026101005` |
+| `anthropic` `aws-bedrock-claude-invoke` `aws-bedrock-mantle` `aws-bedrock-openai` `openai` | `2026101005` |
 | `deepseek` `hunyuan` `qwen` | `2026101101` |
 | `gemini` | `2026101201` |
 | `mimo-token-plan-china` | `2026101401` |
+| `doubao` `minimax` | `2026101901` |
 
 **Skills** (`skills/<id>/`, release tag `skill-<id>-v<version>`)
 
