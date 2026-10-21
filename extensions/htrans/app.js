@@ -43,6 +43,11 @@ const T = {
     unreachable: 'Cannot reach the transcription service (not logged in, extension not allowed, or the server has no transcribe proxy).',
     pkgBad: (m) => `Cannot read this package: ${m}`,
     fsFail: (m) => `Writing to the package failed: ${m}`,
+    unsaved: (min, m) => `The last ${min} min of recording is not saved yet (${m}) — it is kept on this page and retried.`,
+    authExpired: 'Your login has expired: open Halo in a new tab and log in again — do not reload or close this page; the data is written as soon as you are logged in.',
+    authMaybe: 'Most likely your login has expired: open Halo in a new tab and log in again — do not reload or close this page; the data is written as soon as you are logged in.',
+    saved: 'Unsaved data written',
+    restored: (min) => `Restored unsaved data from last time (about ${min} min)`,
     noRecorder: 'This browser cannot record webm/opus — no audio file will be saved (transcript and screenshots still work).',
     prompt: (p) => `Please read ${p}/transcript.md (the meeting may still be in progress) and summarize what has been said so far`,
     appName: 'Meeting Recorder', copyShort: 'Copy prompt', refresh: 'Refresh microphone list', elapsed: 'Recorded time',
@@ -82,6 +87,11 @@ const T = {
     unreachable: '无法连接转写服务（未登录、扩展无权限，或服务器没有转写代理）。',
     pkgBad: (m) => `无法读取该会议包：${m}`,
     fsFail: (m) => `写入会议包失败：${m}`,
+    unsaved: (min, m) => `最近 ${min} 分钟的录音还没保存（${m}），已暂存在本页并持续重试。`,
+    authExpired: '登录已过期：请在新标签页打开 Halo 重新登录，不要刷新或关闭这一页；登录后会自动补写。',
+    authMaybe: '多半是登录过期：请在新标签页打开 Halo 重新登录，不要刷新或关闭这一页；登录后会自动补写。',
+    saved: '已补写完成',
+    restored: (min) => `已恢复上次未保存的数据（约 ${min} 分钟）`,
     noRecorder: '当前浏览器不支持 webm/opus 录音——不会保存音频文件（转写和截图仍可用）。',
     prompt: (p) => `请阅读 ${p}/transcript.md（会议可能仍在进行），概括到目前为止的内容`,
     appName: '会议录音', copyShort: '复制提示', refresh: '刷新麦克风列表', elapsed: '已录时长',
@@ -118,28 +128,173 @@ const chains = new Map();
 /** Run `fn` after everything previously queued for `path` (appends to one file stay ordered). */
 const enqueue = (path, fn) => {
   const p = (chains.get(path) ?? Promise.resolve()).then(fn).catch((e) => { console.warn('[htrans] fs', path, e); setNotice('fs', () => t('fsFail', e.message)); })
-    .finally(() => { if (chains.get(path) === p) chains.delete(path); }); // one-shot paths (shots/*) must not pile up over hours
+    .finally(() => { if (chains.get(path) === p) { chains.delete(path); settled(path); } }); // one-shot paths (shots/*) must not pile up over hours
   chains.set(path, p);
   return p;
 };
-const appendText = (path, s) => enqueue(path, () => fsCall('append', path, enc(s)));
-const drainWrites = () => Promise.all([...chains.values()]);
+
+// Failed writes are kept and retried in order — an expired login (the host answers 401, or a proxy redirects to its SSO
+// page) fails every request with `io` while the transcription WS, opened earlier, keeps working; dropping the chunks
+// left holes in the audio and the transcript. Other codes (not-found / denied / invalid-path) still drop the chunk.
+const sizes = new Map(); // path -> file size after the last acknowledged append (dedupes a resend)
+const failing = new Map(); // path -> epoch ms of its oldest unsaved data (the chunk being retried), until its queue is empty
+let failErr = null;
+function unsaved(path, at, e) {
+  failing.set(path, at); // sends are serial: the chunk failing now is the oldest one not saved on this path
+  failErr = e;
+  setNotice('save', () => `${t('unsaved', Math.max(1, Math.round((Date.now() - Math.min(...failing.values())) / 60000)), failErr.message)} ${t(failErr.auth ? 'authExpired' : 'authMaybe')}`, 'err');
+}
+function settled(path) {
+  if (!failing.delete(path) || failing.size) return;
+  setNotice('save', null);
+  toast(t('saved'));
+}
+/** Send one write / append, retrying `io` failures (1 s doubling to 30 s) until it lands. An append that may already
+ *  have landed unacknowledged (an earlier attempt, or the last request of a page that went away) is checked first: file
+ *  size = last acknowledged size + this chunk means it did. Returns false when it had. */
+async function send(path, op, bytes, at, maybeLanded = false) {
+  for (let delay = 1000; ; delay = Math.min(delay * 2, 30000)) {
+    try {
+      if (maybeLanded && op === 'append' && sizes.has(path)) {
+        const st = await fsCall('stat', path).catch((e) => { if (e.code === 'not-found') return null; throw e; });
+        if (st?.size === sizes.get(path) + bytes.byteLength) { sizes.set(path, st.size); return false; }
+      }
+      const r = await fsCall(op, path, bytes.slice(0)); // the buffer is transferred; keep ours for a retry
+      if (op === 'append' && typeof r.size === 'number') sizes.set(path, r.size);
+      return true;
+    } catch (e) {
+      if (e.code !== 'io') throw e;
+      maybeLanded = true;
+      unsaved(path, at, e);
+      await sleep(delay);
+    }
+  }
+}
+
+// ---- write-ahead log (IndexedDB) ----------------------------------------------------------------------------------------
+// Every write / append is stored before it is sent and deleted once the host confirms it, so a reload, a crash or a
+// closed tab (also mid-outage) loses at most nothing but what the browser itself drops; the next open of the package in
+// this browser replays the rest. Own database: the iframe is same-origin with the admin and shares its IndexedDB. Records
+// are keyed by bundle path + meeting.createdAt — two workspaces can hold the same relative path.
+let walDb = null;
+let walSeq = Date.now() * 1000; // increasing across page loads too, so a replayed record never sorts after a newer one
+const walKey = () => `${bundlePath}|${meeting?.createdAt ?? ''}`;
+function walOpen() {
+  walDb ??= new Promise((res, rej) => {
+    const req = indexedDB.open('htrans', 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore('chunks', { keyPath: ['key', 'path', 'seq'] }).createIndex('at', 'at');
+      req.result.createObjectStore('sizes', { keyPath: ['key', 'path'] }).createIndex('at', 'at');
+    };
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+  return walDb;
+}
+/** One readwrite transaction over both stores; resolves with `fn`'s return value once it commits. Never throws: without
+ *  IndexedDB recording still works, just without the reload safety net. */
+async function walTx(fn) {
+  try {
+    const tx = (await walOpen()).transaction(['chunks', 'sizes'], 'readwrite');
+    const out = fn(tx.objectStore('chunks'), tx.objectStore('sizes'));
+    await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = tx.onabort = () => rej(tx.error); });
+    return out;
+  } catch (e) { console.warn('[htrans] wal', e); return null; }
+}
+/** `replace` = keep only this record for its path (meeting.json: only the latest copy matters). */
+const walPut = (rec, replace) => walTx((c) => {
+  if (replace) c.delete(IDBKeyRange.bound([rec.key, rec.path, 0], [rec.key, rec.path, rec.seq], false, true));
+  c.put(rec);
+});
+const walDone = (rec) => walTx((c, s) => {
+  c.delete([rec.key, rec.path, rec.seq]);
+  if (rec.op === 'append' && sizes.has(rec.path)) s.put({ key: rec.key, path: rec.path, size: sizes.get(rec.path), at: Date.now() });
+});
+const walCleanup = () => walTx((...stores) => {
+  for (const st of stores) {
+    st.index('at').openCursor(IDBKeyRange.upperBound(Date.now() - 30 * 864e5)).onsuccess = (ev) => { const cur = ev.target.result; if (cur) { cur.delete(); cur.continue(); } };
+  }
+});
+// The package's Web Lock is held for the iframe's lifetime by the page that got it on open, and queued for by a page
+// that starts recording without it — so a page opened later never replays a live page's in-flight chunks.
+let lockHeld = false;
+const lockName = () => `htrans:${walKey()}`;
+const hold = () => new Promise(() => {});
+/** false = another tab / split pane has the package open (no replay, no crash recovery here — that page is alive), or no
+ *  Web Locks (insecure context, which can't record either — the records stay for a later open). */
+const holdLock = () => new Promise((res) => {
+  if (!navigator.locks) return res(false);
+  navigator.locks.request(lockName(), { ifAvailable: true }, (lock) => { res(!!lock); if (lock) { lockHeld = true; return hold(); } }).catch(() => res(false));
+});
+const queueLock = () => {
+  if (lockHeld || !navigator.locks) return;
+  lockHeld = true;
+  navigator.locks.request(lockName(), hold).catch(() => {});
+};
+
+/** Queue a write / append of `data` (ArrayBuffer or Blob): logged, then sent in order behind everything earlier for `path`.
+ *  The log entry is gone before the next send starts, so at most one entry per path can have landed unacknowledged. */
+const persist = (path, op, data) => {
+  const rec = { key: walKey(), path, seq: ++walSeq, op, at: Date.now() };
+  const bytes = data instanceof Blob ? data.arrayBuffer() : Promise.resolve(data);
+  const logged = bytes.then((b) => walPut({ ...rec, bytes: b }));
+  return enqueue(path, async () => {
+    await logged;
+    try { await send(path, op, await bytes, rec.at); } finally { await walDone(rec); }
+  });
+};
+const appendText = (path, s) => persist(path, 'append', enc(s));
+const drainWrites = async () => { while (chains.size || meetingWrite) await Promise.all([...chains.values(), meetingWrite]); };
 
 let meeting = null;
 let meetingWrite = null; // in-flight promise; saves requested meanwhile coalesce into one follow-up write
 let meetingAgain = false;
+let meetingRec = null; // the latest meeting.json, already in the write-ahead log
 const saveMeeting = () => {
+  const bytes = enc(JSON.stringify(meeting, null, 2));
+  meetingRec = { key: walKey(), path: 'meeting.json', seq: ++walSeq, op: 'write', at: Date.now(), bytes };
+  meetingRec.logged = walPut({ ...meetingRec }, true);
   if (meetingWrite) { meetingAgain = true; return meetingWrite; }
   meetingWrite = (async () => {
     try {
       do {
         meetingAgain = false;
-        try { await fsCall('write', 'meeting.json', enc(JSON.stringify(meeting, null, 2))); } catch (e) { console.warn('[htrans] meeting.json', e); setNotice('fs', () => t('fsFail', e.message)); }
+        const { logged, ...rec } = meetingRec;
+        try { await logged; await send('meeting.json', 'write', rec.bytes, rec.at); } catch (e) { console.warn('[htrans] meeting.json', e); setNotice('fs', () => t('fsFail', e.message)); }
+        await walDone(rec);
       } while (meetingAgain);
-    } finally { meetingWrite = null; }
+    } finally { meetingWrite = null; settled('meeting.json'); }
   })();
   return meetingWrite;
 };
+
+/** Write what an earlier page of this package in this browser left unconfirmed, in order per path, before the transcript
+ *  is read and an interrupted run is closed (so its end counts the replayed lines). Only the head of each path can have
+ *  landed unacknowledged — sends are serial — so only it gets the size check. */
+async function replay() {
+  const key = walKey(), range = IDBKeyRange.bound([key], [key, []]);
+  const got = await walTx((c, s) => [c.getAll(range), s.getAll(range)]);
+  const recs = got?.[0].result ?? [];
+  if (!recs.length) return;
+  for (const x of got[1].result) sizes.set(x.path, x.size);
+  const byPath = new Map();
+  for (const r of recs) byPath.set(r.path, [...(byPath.get(r.path) ?? []), r]); // key order = path, then seq
+  const sent = [];
+  await Promise.all([...byPath].map(([path, list]) => enqueue(path, async () => {
+    for (const [i, r] of list.entries()) {
+      try { if (await send(path, r.op, r.bytes, r.at, i === 0)) sent.push(r.at); }
+      catch (e) {
+        if (e.code === 'not-found') { for (const x of list.slice(i)) await walDone(x); return; } // package deleted / renamed meanwhile
+        console.warn('[htrans] replay', path, e); setNotice('fs', () => t('fsFail', e.message));
+      }
+      await walDone(r);
+    }
+  })));
+  const m = byPath.get('meeting.json')?.at(-1);
+  if (m) { meeting = JSON.parse(new TextDecoder().decode(m.bytes)); if (!Array.isArray(meeting.runs)) meeting.runs = []; }
+  const min = Math.max(1, Math.round((Math.max(...sent) - Math.min(...sent)) / 60000));
+  if (sent.length) setNotice('restored', () => t('restored', min));
+}
 
 // ---- notices / status ---------------------------------------------------------------------------------------------------
 
@@ -245,7 +400,7 @@ async function loadShot(box) {
   box.dataset.state = 'loading';
   const img = box.firstChild;
   let r;
-  try { r = await fsCall('read', box.dataset.shot); } catch { if (box.dataset.state === 'loading') box.dataset.state = 'error'; return; }
+  try { await chains.get(box.dataset.shot); r = await fsCall('read', box.dataset.shot); } catch { if (box.dataset.state === 'loading') box.dataset.state = 'error'; return; } // its write may still be queued / retrying
   if (box.dataset.state !== 'loading' || img.src) return; // unloaded meanwhile, or an earlier read already set it
   img.onload = () => { if (box.dataset.state === 'loading') { box.style.aspectRatio = shotAspect = `${img.naturalWidth} / ${img.naturalHeight}`; box.dataset.state = 'loaded'; } };
   img.onerror = () => { if (img.src) { unloadShot(box); box.dataset.state = 'error'; } };
@@ -337,17 +492,21 @@ async function loadPackage() {
   try { raw = new Uint8Array((await fsCall('read', 'meeting.json')).buffer); } catch (e) { if (e.code !== 'not-found') { setNotice('pkg', () => t('pkgBad', e.message), 'err'); renderControls(); return; } }
   if (!raw) {
     meeting = { format: 'htrans', version: 1, title, createdAt: new Date().toISOString(), status: 'idle', runs: [], shotIntervalSec: 0, asr: { engine: 'aws-transcribe', language: DEFAULT_LANG } };
-    await Promise.all([saveMeeting(), enqueue('README.md', () => fsCall('write', 'README.md', enc(README)))]);
+    await Promise.all([saveMeeting(), persist('README.md', 'write', enc(README))]);
   } else {
     try { meeting = JSON.parse(new TextDecoder().decode(raw)); if (!Array.isArray(meeting.runs)) meeting.runs = []; } catch (e) { setNotice('pkg', () => t('pkgBad', e.message), 'err'); renderControls(); return; }
   }
+  await walCleanup();
+  const owner = await holdLock();
+  if (owner) await replay();
   let entries = [];
   try {
     const text = new TextDecoder().decode((await fsCall('read', 'transcript.jsonl')).buffer);
     for (const line of text.split('\n')) { if (!line.trim()) continue; try { entries.push(JSON.parse(line)); } catch { /* torn last line after a crash */ } }
   } catch (e) { if (e.code !== 'not-found') setNotice('pkg', () => t('pkgBad', e.message), 'err'); }
   // A previous session died while recording (crash / reload): close its run off the last thing it managed to write.
-  if (meeting.status === 'recording') {
+  // Not while another page holds the package's lock: that one is alive (maybe still recording).
+  if (meeting.status === 'recording' && (owner || !navigator.locks)) {
     const run = meeting.runs[meeting.runs.length - 1];
     if (run && !run.endedAt) {
       const last = entries.reduce((m, e) => Math.max(m, e.at != null ? e.at + (e.end != null && e.t != null ? e.end - e.t : 0) : 0), 0);
@@ -355,7 +514,7 @@ async function loadPackage() {
       run.endedAt = Math.max(run.startedAt, last || Date.now());
     }
     meeting.status = 'stopped';
-    await saveMeeting();
+    saveMeeting(); // not awaited: a write being retried must not keep the package from opening
   }
   $('shot').value = String(meeting.shotIntervalSec ?? 0);
   if (meeting.asr?.language) $('lang').value = meeting.asr.language;
@@ -436,7 +595,7 @@ async function takeShot(r) {
     const off = at - meeting.startedAt;
     const path = `shots/${pad(Math.floor(off / 1000), 6)}.jpg`;
     const buf = await blob.arrayBuffer();
-    await enqueue(path, () => fsCall('write', path, buf));
+    persist(path, 'write', buf); // not awaited: a write being retried must not hold r.shotBusy (endRun waits on it)
     heldShots.push({ t: off, at, shot: path });
     releaseShots(watermark());
   } finally { frame.done(); }
@@ -556,7 +715,7 @@ async function start() {
   const wantSys = caps.sys && $('sys').checked;
   const shotSec = caps.shot ? Number($('shot').value) : 0; // hidden row may still hold a saved meeting.json interval
   if (!wantMic && !wantSys && !shotSec) { setNotice('start', () => t('noSource')); return; }
-  setNotice('start', null); setNotice('fs', null);
+  setNotice('start', null); setNotice('fs', null); setNotice('restored', null); // 'save' (unsaved data) stays until it is written
   setPhase('starting');
   let display = null, micStream = null, ctx = null;
   try {
@@ -578,6 +737,7 @@ async function start() {
     const hasAudio = !!micStream || sysTracks.length > 0;
     if (!hasAudio && !(shotSec && display?.getVideoTracks().length)) { stopTracks(display); setNotice('start', () => t('noSource')); setPhase(meeting.runs.length ? 'stopped' : 'idle'); return; }
 
+    queueLock();
     const now = Date.now();
     meeting.startedAt ??= now;
     const idx = meeting.runs.length + 1;
@@ -615,7 +775,7 @@ async function start() {
       mix.connect(dest);
       if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
         const mr = r.recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 32000 });
-        mr.ondataavailable = (ev) => { if (ev.data.size) enqueue(audio, async () => fsCall('append', audio, await ev.data.arrayBuffer())); };
+        mr.ondataavailable = (ev) => { if (ev.data.size) persist(audio, 'append', ev.data); };
         r.recorderStopped = new Promise((res) => { mr.onstop = res; });
         mr.start(5000);
       } else setNotice('rec', () => t('noRecorder'));
@@ -659,11 +819,13 @@ async function endRun(kind) {
   r.run.endedAt = Date.now();
   meeting.status = 'stopped';
   setNotice('tx', null);
-  await saveMeeting();
-  await drainWrites();
-  post({ type: 'dirty', dirty: false });
+  saveMeeting();
+  // Writes still being retried don't hold the controls (a new run queues behind them); the host keeps its unsaved-changes
+  // guard until they have all landed, and a run started meanwhile clears it itself when it ends.
   setPhase(kind === 'pause' ? 'paused' : 'stopped');
   renderTicker(true);
+  await drainWrites();
+  if (!rec) post({ type: 'dirty', dirty: false });
 }
 
 // Everything time-driven hangs off one tick: a 1 s interval plus every PCM batch from the worklet (~150 ms). Timers in a
@@ -783,7 +945,7 @@ addEventListener('message', (e) => {
     if (!p) return;
     fsPending.delete(m.id);
     if (m.ok) p.resolve(m);
-    else p.reject(Object.assign(new Error(m.error), { code: m.code }));
+    else p.reject(Object.assign(new Error(m.error), { code: m.code, auth: m.auth === true })); // auth: login expired (newer hosts)
   } else if (m.type === 'theme') applyTheme(m);
   else if (m.type === 'lang') {
     lang = m.lang === 'en' ? 'en' : 'zh';
