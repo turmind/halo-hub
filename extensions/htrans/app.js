@@ -14,7 +14,7 @@ const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${pa
 
 const T = {
   en: {
-    mic: 'Microphone', sys: 'System / video sound', shots: 'Screenshots', skip: 'Skip unchanged frames', lang: 'Language',
+    mic: 'Microphone', sys: 'System / video sound', shots: 'Screenshots', skip: 'Skip unchanged frames', lang: 'Language', speakers: 'Identify speakers',
     start: 'Start', resume: 'Resume', pause: 'Pause', stop: 'Stop', copy: 'Copy prompt for agent', copied: 'Copied',
     jump: 'Jump to latest ↓', empty: 'Nothing recorded yet. Pick your sources and press Start.',
     micDefault: 'Default microphone', micNone: 'None (no microphone)', micN: 'Microphone',
@@ -58,7 +58,7 @@ const T = {
     capNone: 'This browser can’t record system / video sound or take screenshots (needs desktop Chrome / Edge, or the Halo desktop app).',
   },
   zh: {
-    mic: '麦克风', sys: '系统 / 视频声音', shots: '定时截图', skip: '跳过无变化画面', lang: '语言',
+    mic: '麦克风', sys: '系统 / 视频声音', shots: '定时截图', skip: '跳过无变化画面', lang: '语言', speakers: '区分说话人',
     start: '开始', resume: '继续', pause: '暂停', stop: '结束', copy: '复制给 Agent 的提示', copied: '已复制',
     jump: '回到最新 ↓', empty: '还没有记录。选好输入源后点「开始」。',
     micDefault: '默认麦克风', micNone: '不使用麦克风', micN: '麦克风',
@@ -333,7 +333,7 @@ function renderControls() {
   $('start').disabled = !idle || !meeting || !navigator.mediaDevices;
   $('pause').disabled = !running;
   $('stop').disabled = !running;
-  for (const id of ['mic', 'micRefresh', 'sys', 'shot', 'lang']) $(id).disabled = !idle;
+  for (const id of ['mic', 'micRefresh', 'sys', 'shot', 'lang', 'speakers']) $(id).disabled = !idle;
   showEmpty(entryCount === 0 && idle);
   const label = phase === 'recording' ? 'sRec' : phase === 'starting' || phase === 'stopping' ? 'sBusy' : phase === 'paused' ? 'sPaused' : hasRuns || phase === 'stopped' ? 'sStopped' : 'sReady';
   $('status').textContent = t(label);
@@ -466,7 +466,7 @@ Recorded by the Halo "Meeting Recorder" extension. 由 Halo「Meeting Recorder�
 
 | File / 文件 | What it is / 说明 |
 |---|---|
-| \`transcript.md\` | **Read this. / 请读这个。** Timeline \`[HH:MM:SS] Speaker N: text\` (or \`[HH:MM:SS] text\` when no speaker is known) and screenshot lines \`[HH:MM:SS] 📷 shots/NNNNNN.jpg\`. Offsets count from \`meeting.json\`.startedAt. 时间线，偏移量从 startedAt 起算；\`Speaker N:\` 是说话人编号。 |
+| \`transcript.md\` | **Read this. / 请读这个。** Timeline \`[HH:MM:SS] text\` (\`[HH:MM:SS] Speaker N: text\` when "Identify speakers" was on) and screenshot lines \`[HH:MM:SS] 📷 shots/NNNNNN.jpg\`. Offsets count from \`meeting.json\`.startedAt. 时间线，偏移量从 startedAt 起算；勾选「区分说话人」时带 \`Speaker N:\` 说话人编号。 |
 | \`transcript.jsonl\` | Same content, one JSON per line: \`{"t","end","at","text","lang","speaker"?}\` or \`{"t","at","shot"}\` (\`t\`/\`end\` = ms since startedAt, \`at\` = epoch ms, \`speaker\` = 1, 2, …). 同样内容，机器可读；\`speaker\` 为说话人编号（可选）。 |
 | \`meeting.json\` | Metadata: \`status\`, \`startedAt\`, \`runs[]\` (one per start/resume; \`interrupted:true\` = cut off by a crash or reload), screenshot interval, language. 元数据。 |
 | \`audio/NNN.webm\` | Audio of run NNN (opus). 每次录制一个音频文件。 |
@@ -481,8 +481,8 @@ Recorded by the Halo "Meeting Recorder" extension. 由 Halo「Meeting Recorder�
   要把截图和讨论对应起来，用文件名里的秒数，去看 \`transcript.md\` 中相近时间的内容。
 - The transcript is machine output from Amazon Transcribe and may contain errors (names, numbers, mixed languages). Do not treat it as verbatim.
   转写由 Amazon Transcribe 机器生成，可能有错误（人名、数字、中英混说），请勿当作逐字稿。
-- \`Speaker N\` / \`speaker\` only tells voices apart — it is a number, not a name, and nobody is identified. Numbers hold within one transcription stream only: after a pause / resume or a reconnect the same person may get a different number. Lines without a speaker come from a Halo server whose transcription doesn't label speakers yet (or from an older recording).
-  \`Speaker N\` / \`speaker\` 只用来区分不同的声音，是编号不是姓名，不识别具体是谁。编号只在一条转写流内有效：暂停后继续、断线重连之后，同一个人可能换编号。没有说话人的行来自尚不支持说话人标签的 Halo 服务端（或更早的录音）。
+- \`Speaker N\` / \`speaker\` only tells voices apart — it is a number, not a name, and nobody is identified. Numbers hold within one transcription stream only: after a pause / resume or a reconnect the same person may get a different number. Speakers are only labelled when "Identify speakers" was ticked (\`meeting.json\` → \`asr.speakers\`); it is off by default, so most lines have no speaker.
+  \`Speaker N\` / \`speaker\` 只用来区分不同的声音，是编号不是姓名，不识别具体是谁。编号只在一条转写流内有效：暂停后继续、断线重连之后，同一个人可能换编号。只有勾选「区分说话人」时才标说话人（\`meeting.json\` 的 \`asr.speakers\`），默认不勾，所以多数行没有说话人。
 - Write your own notes to \`notes.md\`; leave the other files untouched (the recorder is still appending to them while recording).
   请把笔记写到 \`notes.md\`，不要改动其他文件（录制中会继续追加）。
 `;
@@ -519,6 +519,7 @@ async function loadPackage() {
   $('shot').value = String(meeting.shotIntervalSec ?? 0);
   if (meeting.asr?.language) $('lang').value = meeting.asr.language;
   if (!$('lang').value) $('lang').value = DEFAULT_LANG;
+  $('speakers').checked = meeting.asr?.speakers === true; // off for new meetings and packages from <= 1.0.7
   entries.sort((a, b) => (a.t ?? 0) - (b.t ?? 0)); // stable; packages from <= 1.0.2 may have shots before earlier speech
   for (const e of entries) addEntry(e);
   stick = true;
@@ -627,7 +628,7 @@ function releaseShots(before) {
 function txOpen() {
   const lang = TX_LANG[$('lang').value] ?? $('lang').value;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${proto}//${location.host}/api/transcribe/stream?ext=htrans&lang=${encodeURIComponent(lang)}`);
+  const ws = new WebSocket(`${proto}//${location.host}/api/transcribe/stream?ext=htrans&lang=${encodeURIComponent(lang)}${$('speakers').checked ? '&speakers=1' : ''}`);
   ws.binaryType = 'arraybuffer';
   Object.assign(tx, { ws, state: 'connecting', ready: false, startWall: 0, partialAt: 0, err: null, closing: false, retryAt: 0 });
   ws.onmessage = (ev) => {
@@ -746,7 +747,7 @@ async function start() {
     meeting.runs.push(run);
     meeting.status = 'recording';
     meeting.shotIntervalSec = shotSec;
-    meeting.asr = { engine: 'aws-transcribe', language: $('lang').value };
+    meeting.asr = { engine: 'aws-transcribe', language: $('lang').value, speakers: $('speakers').checked };
     const r = rec = { run, display, micStream, shotSec, nextShotAt: shotSec ? now + 1500 : 0, shotBusy: null, prevThumb: null, pcm: 0 };
 
     if (hasAudio) {
