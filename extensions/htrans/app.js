@@ -15,7 +15,7 @@ const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${pa
 const T = {
   en: {
     mic: 'Microphone', sys: 'System / video sound', shots: 'Screenshots', skip: 'Skip unchanged frames', lang: 'Language', speakers: 'Identify speakers',
-    start: 'Start', resume: 'Resume', pause: 'Pause', stop: 'Stop', copy: 'Copy prompt for agent', copied: 'Copied',
+    start: 'Start', resume: 'Resume', pause: 'Pause', copy: 'Copy prompt for agent', copied: 'Copied',
     jump: 'Jump to latest ↓', empty: 'Nothing recorded yet. Pick your sources and press Start.',
     micDefault: 'Default microphone', micNone: 'None (no microphone)', micN: 'Microphone',
     off: 'Off', secs: 's', speaking: 'speaking…',
@@ -27,7 +27,7 @@ const T = {
       'Auto: Mandarin, Cantonese and English all come up in the meeting — each stretch of speech is detected on its own (about 1 s of speech each).',
       'English: the whole meeting is in English.',
     ],
-    sReady: 'Ready', sRec: 'Recording', sPaused: 'Paused', sStopped: 'Stopped', sBusy: 'Working…',
+    sReady: 'Ready', sRec: 'Recording', sStopped: 'Stopped', sBusy: 'Working…',
     txOff: '', txConnecting: 'Connecting to Amazon Transcribe…', txLive: 'Live transcription', txRetry: 'Reconnecting', txErr: 'Transcription unavailable',
     retryIn: (s) => `retry in ${s}s`,
     noMedia: 'Recording needs a secure context: open Halo over https or on localhost, or use the Halo desktop app.',
@@ -59,7 +59,7 @@ const T = {
   },
   zh: {
     mic: '麦克风', sys: '系统 / 视频声音', shots: '定时截图', skip: '跳过无变化画面', lang: '语言', speakers: '区分说话人',
-    start: '开始', resume: '继续', pause: '暂停', stop: '结束', copy: '复制给 Agent 的提示', copied: '已复制',
+    start: '开始', resume: '继续', pause: '暂停', copy: '复制给 Agent 的提示', copied: '已复制',
     jump: '回到最新 ↓', empty: '还没有记录。选好输入源后点「开始」。',
     micDefault: '默认麦克风', micNone: '不使用麦克风', micN: '麦克风',
     off: '关闭', secs: '秒', speaking: '正在说…',
@@ -71,7 +71,7 @@ const T = {
       '自动：会上普通话、粤语、英语都有人讲，每段话单独识别语言（每段至少说 1 秒左右）。',
       'English：全程英语。',
     ],
-    sReady: '就绪', sRec: '录制中', sPaused: '已暂停', sStopped: '已结束', sBusy: '处理中…',
+    sReady: '就绪', sRec: '录制中', sStopped: '已结束', sBusy: '处理中…',
     txOff: '', txConnecting: '正在连接 Amazon Transcribe…', txLive: '实时转写中', txRetry: '正在重连', txErr: '转写不可用',
     retryIn: (s) => `${s} 秒后重试`,
     noMedia: '录制需要安全上下文：请用 https 或 localhost 打开 Halo，或使用 Halo 桌面客户端。',
@@ -317,7 +317,7 @@ function toast(msg) { const n = $('toast'); n.textContent = msg; n.hidden = fals
 
 let bundlePath = '';
 let title = '';
-let phase = 'idle'; // idle | starting | recording | stopping | paused | stopped
+let phase = 'idle'; // idle | starting | recording | stopping | stopped
 let rec = null; // the active run (runtime objects), null when not recording
 const tx = { ws: null, state: 'off', ready: false, startWall: 0, partialAt: 0, partialSeen: 0, failures: 0, backoff: 1000, retryAt: 0, readyAt: 0, err: null, closing: false, onClosed: null };
 
@@ -325,17 +325,16 @@ const setPhase = (p) => { phase = p; renderControls(); };
 
 function renderControls() {
   const running = phase === 'recording';
-  const idle = phase === 'idle' || phase === 'paused' || phase === 'stopped';
+  const idle = phase === 'idle' || phase === 'stopped';
   const hasRuns = (meeting?.runs.length ?? 0) > 0;
-  $('start').textContent = meeting?.runs.some((r) => r.endedAt) ? t('resume') : t('start');
-  $('pause').textContent = t('pause');
-  $('stop').textContent = t('stop');
-  $('start').disabled = !idle || !meeting || !navigator.mediaDevices;
-  $('pause').disabled = !running;
-  $('stop').disabled = !running;
+  // One toggle: Start (nothing recorded yet) / Pause (recording) / Resume. A pause ends the run, Resume starts a new one.
+  const tg = $('toggle'), pausing = running || phase === 'stopping';
+  tg.textContent = pausing ? t('pause') : meeting?.runs.some((r) => r.endedAt) ? t('resume') : t('start');
+  tg.className = 'toggle' + (pausing ? ' danger' : ' primary');
+  tg.disabled = running ? false : !idle || !meeting || !navigator.mediaDevices;
   for (const id of ['mic', 'micRefresh', 'sys', 'shot', 'lang', 'speakers']) $(id).disabled = !idle;
   showEmpty(entryCount === 0 && idle);
-  const label = phase === 'recording' ? 'sRec' : phase === 'starting' || phase === 'stopping' ? 'sBusy' : phase === 'paused' ? 'sPaused' : hasRuns || phase === 'stopped' ? 'sStopped' : 'sReady';
+  const label = phase === 'recording' ? 'sRec' : phase === 'starting' || phase === 'stopping' ? 'sBusy' : hasRuns || phase === 'stopped' ? 'sStopped' : 'sReady';
   $('status').textContent = t(label);
   $('status').className = 'pill' + (running ? ' recording' : '');
 }
@@ -711,7 +710,7 @@ async function txFinish() {
 function stopTracks(...streams) { for (const s of streams) s?.getTracks().forEach((tr) => tr.stop()); }
 
 async function start() {
-  if (phase !== 'idle' && phase !== 'paused' && phase !== 'stopped') return;
+  if (phase !== 'idle' && phase !== 'stopped') return;
   const wantMic = $('mic').value !== 'none';
   const wantSys = caps.sys && $('sys').checked;
   const shotSec = caps.shot ? Number($('shot').value) : 0; // hidden row may still hold a saved meeting.json interval
@@ -794,11 +793,11 @@ async function start() {
   } catch (e) {
     console.warn('[htrans] start failed', e);
     setNotice('start', () => t('micFailed', e.message || String(e)), 'err');
-    if (rec) await endRun('stop'); else { stopTracks(display, micStream); ctx?.close(); setPhase(meeting.runs.length ? 'stopped' : 'idle'); }
+    if (rec) await endRun(); else { stopTracks(display, micStream); ctx?.close(); setPhase(meeting.runs.length ? 'stopped' : 'idle'); }
   }
 }
 
-async function endRun(kind) {
+async function endRun() {
   const r = rec;
   if (!r || phase === 'stopping') return;
   setPhase('stopping');
@@ -823,7 +822,7 @@ async function endRun(kind) {
   saveMeeting();
   // Writes still being retried don't hold the controls (a new run queues behind them); the host keeps its unsaved-changes
   // guard until they have all landed, and a run started meanwhile clears it itself when it ends.
-  setPhase(kind === 'pause' ? 'paused' : 'stopped');
+  setPhase('stopped');
   renderTicker(true);
   await drainWrites();
   if (!rec) post({ type: 'dirty', dirty: false });
@@ -923,9 +922,7 @@ function applyLang() {
   renderControls();
 }
 
-$('start').onclick = start;
-$('pause').onclick = () => endRun('pause');
-$('stop').onclick = () => endRun('stop');
+$('toggle').onclick = () => (phase === 'recording' ? endRun() : start());
 $('micRefresh').onclick = refreshDevices;
 $('langHelp').onclick = () => { const tip = $('langTip'); tip.hidden = !tip.hidden; $('langHelp').ariaExpanded = String(!tip.hidden); };
 $('copyPrompt').onclick = async () => {

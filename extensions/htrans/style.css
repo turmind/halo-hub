@@ -62,14 +62,13 @@ button.help { width: 20px; height: 20px; padding: 0; border-radius: 50%; font-si
 .meter { width: 90px; height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; flex: 0 0 auto; }
 .meter i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .08s linear; }
 
-.ctl { display: flex; align-items: center; gap: 8px; padding: 12px 14px; }
-button.big { padding: 7px 22px; font-size: 14px; font-weight: 600; border-radius: 7px; }
-button.big.primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
-button.big.primary:hover:not(:disabled) { filter: brightness(1.1); background: var(--primary); }
-button.big.secondary { background: transparent; border-color: var(--border-strong); }
-button.big.danger { background: transparent; color: var(--rec); border-color: var(--rec); }
-button.big.danger:hover:not(:disabled) { background: var(--err-bg); }
-.txstatus { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; padding: 2px 10px 2px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--btn-bg); color: var(--fg); font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
+/* the one record control (Start / Pause / Resume), in the header bar */
+button.toggle { flex: 0 0 auto; min-width: 64px; padding: 3px 14px; font-weight: 600; white-space: nowrap; }
+button.toggle.primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+button.toggle.primary:hover:not(:disabled) { filter: brightness(1.1); background: var(--primary); }
+button.toggle.danger { background: var(--err-bg); color: var(--rec); border-color: var(--rec); }
+button.toggle.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--rec) 22%, transparent); }
+.txstatus { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--btn-bg); color: var(--fg); font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
 .txstatus:empty { display: none; }
 .txstatus::before { content: ""; flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
 .txstatus.live::before { background: var(--ok); }
@@ -123,7 +122,5 @@ button.big.danger:hover:not(:disabled) { background: var(--err-bg); }
   .src { flex: 1 1 100%; }
   .src select { flex: 0 1 auto; }
   .meter { width: 56px; }
-  .ctl { flex-wrap: wrap; }
-  .txstatus { margin-left: 0; }
   .thumb { width: 100%; }
 }

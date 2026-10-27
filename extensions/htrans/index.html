@@ -12,7 +12,9 @@
     <span id="title" class="title"></span>
     <span id="status" class="pill"></span>
     <span id="elapsed" class="elapsed">00:00:00</span>
+    <span id="txStatus" class="txstatus" role="status"></span>
     <span class="grow"></span>
+    <button id="toggle" class="toggle" type="button"></button>
     <button id="copyPrompt" class="ghost" type="button"><span class="long" data-i="copy"></span><span class="short" data-i="copyShort"></span></button>
   </header>
 
@@ -42,12 +44,6 @@
     <p id="capNote" class="capnote" hidden></p>
   </section>
 
-  <section class="ctl">
-    <button id="start" class="big primary" type="button"></button>
-    <button id="pause" class="big secondary" type="button"></button>
-    <button id="stop" class="big danger" type="button"></button>
-    <span id="txStatus" class="txstatus" role="status"></span>
-  </section>
   <div id="notice" class="notice" hidden></div>
 
   <main class="logwrap">
