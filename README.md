@@ -50,7 +50,7 @@ Model provider configs — the same yamls Halo bundles in `packages/server/templ
 | `mimo-token-plan-china` | `2026101401` |
 | `doubao` `minimax` | `2026101901` |
 | `kimi` | `2026102701` |
-| `aws-bedrock-mantle` `aws-bedrock-openai` | `2026110402` |
+| `aws-bedrock-mantle` `aws-bedrock-openai` | `2026110501` |
 
 **Skills** (`skills/<id>/`, release tag `skill-<id>-v<version>`)
 
