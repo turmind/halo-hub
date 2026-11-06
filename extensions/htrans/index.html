@@ -3,7 +3,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- Same origin as the admin (sandbox allow-same-origin), so the page carries its own CSP: no inline script / style, no
-     remote anything; connect-src only needs the server's transcribe WebSocket (same host, ws/wss). -->
+     remote anything; connect-src only needs the server's transcription WebSockets (same host, ws/wss). -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src blob:; connect-src 'self' ws: wss:; base-uri 'none'; form-action 'none'">
 <title>Meeting Recorder · 会议录音</title>
 <link rel="stylesheet" href="style.css">
@@ -33,6 +33,10 @@
       <label for="shot" data-i="shots"></label>
       <select id="shot"></select>
       <label class="check"><input id="skip" type="checkbox" checked><span data-i="skip"></span></label>
+    </div>
+    <div class="src">
+      <label for="engine" data-i="engine"></label>
+      <select id="engine"></select>
     </div>
     <div class="src">
       <label for="lang" data-i="lang"></label>

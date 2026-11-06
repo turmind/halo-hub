@@ -1,6 +1,7 @@
 // Meeting Recorder — see README.md. Pipeline: mic + (optional) display audio -> one AudioContext (never connected to the
 // speakers) -> (a) MediaRecorder opus/webm chunks appended to audio/NNN.webm, (b) AudioWorklet -> 16 kHz s16le PCM ->
-// the server's Amazon Transcribe proxy (WS). Final segments / screenshots are appended to the package as they happen.
+// the server's transcription WS (Amazon Transcribe proxy, or on-device SenseVoice). Final segments / screenshots are
+// appended to the package as they happen.
 
 const post = (m, transfer) => parent.postMessage({ haloExt: 1, ...m }, '*', transfer ?? []);
 const $ = (id) => document.getElementById(id);
@@ -15,6 +16,8 @@ const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${pa
 const T = {
   en: {
     mic: 'Microphone', sys: 'System / video sound', shots: 'Screenshots', skip: 'Skip unchanged frames', lang: 'Language', speakers: 'Identify speakers',
+    engine: 'Engine', engines: { 'aws-transcribe': 'Amazon Transcribe', 'sensevoice-local': 'On-device (SenseVoice)' },
+    langAuto: 'The on-device engine detects the language itself (Mandarin / English / Cantonese / Japanese / Korean).',
     start: 'Start', resume: 'Resume', pause: 'Pause', copy: 'Copy prompt for agent', copied: 'Copied',
     jump: 'Jump to latest ↓', empty: 'Nothing recorded yet. Pick your sources and press Start.',
     micDefault: 'Default microphone', micNone: 'None (no microphone)', micN: 'Microphone',
@@ -28,7 +31,11 @@ const T = {
       'English: the whole meeting is in English.',
     ],
     sReady: 'Ready', sRec: 'Recording', sStopped: 'Paused', sBusy: 'Working…',
-    txOff: '', txConnecting: 'Connecting to Amazon Transcribe…', txLive: 'Live transcription', txRetry: 'Reconnecting', txErr: 'Transcription unavailable',
+    txOff: '', txConnecting: 'Connecting to Amazon Transcribe…', txConnectingLocal: 'Starting the on-device engine…', txLive: 'Live transcription', txRetry: 'Reconnecting', txErr: 'Transcription unavailable',
+    modelMissing: 'Preparing the on-device speech model download…',
+    modelDl: (p, mb) => `Downloading the on-device speech model… ${p}%${mb ? ` of ${mb} MB` : ''}`,
+    modelWait: 'Captions start once it is ready; the audio is recorded meanwhile.',
+    modelFail: (m) => `The on-device speech model could not be downloaded: ${m}`,
     retryIn: (s) => `retry in ${s}s`,
     noMedia: 'Recording needs a secure context: open Halo over https or on localhost, or use the Halo desktop app.',
     noSysAudio: 'No system audio in this share (pick a tab / screen with “share audio”). Continuing with the microphone only.',
@@ -41,6 +48,8 @@ const T = {
     denied: 'AWS denied access — the credentials need the IAM permission transcribe:StartStreamTranscriptionWebSocket / transcribe:StartStreamTranscription.',
     limit: 'Amazon Transcribe is throttling or at its limit — backing off.',
     unreachable: 'Cannot reach the transcription service (not logged in, extension not allowed, or the server has no transcribe proxy).',
+    unreachableLocal: 'Cannot reach the on-device speech service (not logged in, or Halo is older than 1.6.5).',
+    busy: 'The on-device speech engine is overloaded (too much audio waiting) — backing off.',
     pkgBad: (m) => `Cannot read this package: ${m}`,
     fsFail: (m) => `Writing to the package failed: ${m}`,
     unsaved: (min, m) => `The last ${min} min of recording is not saved yet (${m}) — it is kept on this page and retried.`,
@@ -59,6 +68,8 @@ const T = {
   },
   zh: {
     mic: '麦克风', sys: '系统 / 视频声音', shots: '定时截图', skip: '跳过无变化画面', lang: '语言', speakers: '区分说话人',
+    engine: '转写引擎', engines: { 'aws-transcribe': 'Amazon Transcribe', 'sensevoice-local': '本机（SenseVoice）' },
+    langAuto: '本机引擎会自动识别语言（普通话 / 英语 / 粤语 / 日语 / 韩语）。',
     start: '开始', resume: '继续', pause: '暂停', copy: '复制给 Agent 的提示', copied: '已复制',
     jump: '回到最新 ↓', empty: '还没有记录。选好输入源后点「开始」。',
     micDefault: '默认麦克风', micNone: '不使用麦克风', micN: '麦克风',
@@ -72,7 +83,11 @@ const T = {
       'English：全程英语。',
     ],
     sReady: '就绪', sRec: '录制中', sStopped: '已暂停', sBusy: '处理中…',
-    txOff: '', txConnecting: '正在连接 Amazon Transcribe…', txLive: '实时转写中', txRetry: '正在重连', txErr: '转写不可用',
+    txOff: '', txConnecting: '正在连接 Amazon Transcribe…', txConnectingLocal: '正在启动本机转写引擎…', txLive: '实时转写中', txRetry: '正在重连', txErr: '转写不可用',
+    modelMissing: '正在准备下载本机语音模型…',
+    modelDl: (p, mb) => `正在下载本机语音模型… ${p}%${mb ? `（共 ${mb} MB）` : ''}`,
+    modelWait: '模型就绪后开始出字幕，录音照常进行。',
+    modelFail: (m) => `本机语音模型下载失败：${m}`,
     retryIn: (s) => `${s} 秒后重试`,
     noMedia: '录制需要安全上下文：请用 https 或 localhost 打开 Halo，或使用 Halo 桌面客户端。',
     noSysAudio: '本次共享没有系统声音（请选择带「共享音频」的标签页 / 屏幕）。仅使用麦克风继续。',
@@ -85,6 +100,8 @@ const T = {
     denied: 'AWS 拒绝访问——凭证需要 IAM 权限 transcribe:StartStreamTranscriptionWebSocket / transcribe:StartStreamTranscription。',
     limit: 'Amazon Transcribe 触发限流或上限，正在退避重试。',
     unreachable: '无法连接转写服务（未登录、扩展无权限，或服务器没有转写代理）。',
+    unreachableLocal: '无法连接本机转写服务（未登录，或 Halo 低于 1.6.5）。',
+    busy: '本机转写引擎繁忙（待处理音频过多），正在退避重试。',
     pkgBad: (m) => `无法读取该会议包：${m}`,
     fsFail: (m) => `写入会议包失败：${m}`,
     unsaved: (min, m) => `最近 ${min} 分钟的录音还没保存（${m}），已暂存在本页并持续重试。`,
@@ -114,6 +131,12 @@ const LANGS = ['zh-CN', 'auto', 'zh-HK', 'en-US'];
 const DEFAULT_LANG = 'zh-CN';
 const TX_LANG = { 'zh-CN': 'zh-CN,en-US', 'zh-HK': 'zh-HK,en-US' };
 const SHOTS = [0, 10, 20, 30, 60];
+// meeting.json asr.engine values. A new meeting takes the engine last started in this browser (the iframe is same-origin
+// with the admin, so the key is namespaced), else Transcribe; a package's recorded engine always wins.
+const ENGINES = ['aws-transcribe', 'sensevoice-local'];
+const LOCAL = 'sensevoice-local';
+const ENGINE_KEY = 'htrans.engine';
+const lastEngine = () => { try { const v = localStorage.getItem(ENGINE_KEY); return ENGINES.includes(v) ? v : ENGINES[0]; } catch { return ENGINES[0]; } };
 
 // ---- package fs (host `fs` frames) --------------------------------------------------------------------------------------
 
@@ -319,7 +342,7 @@ let bundlePath = '';
 let title = '';
 let phase = 'idle'; // idle | starting | recording | stopping | stopped
 let rec = null; // the active run (runtime objects), null when not recording
-const tx = { ws: null, state: 'off', ready: false, startWall: 0, partialAt: 0, partialSeen: 0, failures: 0, backoff: 1000, retryAt: 0, readyAt: 0, err: null, closing: false, onClosed: null };
+const tx = { ws: null, local: false, state: 'off', ready: false, startWall: 0, partialAt: 0, partialSeen: 0, failures: 0, backoff: 1000, retryAt: 0, readyAt: 0, err: null, closing: false, onClosed: null };
 
 const setPhase = (p) => { phase = p; renderControls(); };
 
@@ -332,7 +355,12 @@ function renderControls() {
   tg.textContent = pausing ? t('pause') : meeting?.runs.some((r) => r.endedAt) ? t('resume') : t('start');
   tg.className = 'toggle' + (pausing ? ' danger' : ' primary');
   tg.disabled = running ? false : !idle || !meeting || !navigator.mediaDevices;
-  for (const id of ['mic', 'micRefresh', 'sys', 'shot', 'lang', 'speakers']) $(id).disabled = !idle;
+  for (const id of ['mic', 'micRefresh', 'sys', 'shot', 'engine', 'lang', 'speakers']) $(id).disabled = !idle;
+  // SenseVoice detects the language per segment and takes no language parameter: the picker and its help don't apply.
+  const local = $('engine').value === LOCAL;
+  if (local) { $('lang').disabled = true; $('langTip').hidden = true; $('langHelp').ariaExpanded = 'false'; }
+  $('langHelp').disabled = local;
+  $('lang').title = local ? t('langAuto') : '';
   showEmpty(entryCount === 0 && idle);
   const label = phase === 'recording' ? 'sRec' : phase === 'starting' || phase === 'stopping' ? 'sBusy' : hasRuns || phase === 'stopped' ? 'sStopped' : 'sReady';
   $('status').textContent = t(label);
@@ -352,7 +380,7 @@ function renderTicker(force) {
   let txt = '', cls = 'txstatus';
   const wait = tx.retryAt > now ? Math.ceil((tx.retryAt - now) / 1000) : 0;
   if (rec) {
-    if (tx.state === 'connecting') { txt = t('txConnecting'); cls += ' wait'; }
+    if (tx.state === 'connecting') { txt = t(tx.local ? 'txConnectingLocal' : 'txConnecting'); cls += ' wait'; }
     else if (tx.state === 'live') { txt = t('txLive'); cls += ' live'; }
     else if (tx.state === 'reconnecting') { txt = `${t('txRetry')}… ${wait ? t('retryIn', wait) : ''}`; cls += ' wait'; }
     else if (tx.state === 'error') { txt = `${t('txErr')} — ${t('retryIn', wait)}`; cls += ' bad'; }
@@ -467,7 +495,7 @@ Recorded by the Halo "Meeting Recorder" extension. 由 Halo「Meeting Recorder�
 |---|---|
 | \`transcript.md\` | **Read this. / 请读这个。** Timeline \`[HH:MM:SS] text\` (\`[HH:MM:SS] Speaker N: text\` when "Identify speakers" was on) and screenshot lines \`[HH:MM:SS] 📷 shots/NNNNNN.jpg\`. Offsets count from \`meeting.json\`.startedAt. 时间线，偏移量从 startedAt 起算；勾选「区分说话人」时带 \`Speaker N:\` 说话人编号。 |
 | \`transcript.jsonl\` | Same content, one JSON per line: \`{"t","end","at","text","lang","speaker"?}\` or \`{"t","at","shot"}\` (\`t\`/\`end\` = ms since startedAt, \`at\` = epoch ms, \`speaker\` = 1, 2, …). 同样内容，机器可读；\`speaker\` 为说话人编号（可选）。 |
-| \`meeting.json\` | Metadata: \`status\`, \`startedAt\`, \`runs[]\` (one per start/resume; \`interrupted:true\` = cut off by a crash or reload), screenshot interval, language. 元数据。 |
+| \`meeting.json\` | Metadata: \`status\`, \`startedAt\`, \`runs[]\` (one per start/resume; \`interrupted:true\` = cut off by a crash or reload), screenshot interval, transcription engine and language (\`asr\`). 元数据。 |
 | \`audio/NNN.webm\` | Audio of run NNN (opus). 每次录制一个音频文件。 |
 | \`shots/NNNNNN.jpg\` | Screenshots; the number is the offset in seconds since startedAt. 截图，文件名 = 距 startedAt 的秒数。 |
 | \`notes.md\` | Put your notes / summary here (optional, written by you). 你的笔记 / 总结写在这里。 |
@@ -478,8 +506,8 @@ Recorded by the Halo "Meeting Recorder" extension. 由 Halo「Meeting Recorder�
   会议可能仍在进行：看 \`meeting.json\` 的 \`status\`，\`recording\` 表示正在录制，\`transcript.md\` 还在增长。
 - To relate a screenshot to the discussion, take its offset (the number in the file name, seconds) and read the \`transcript.md\` lines around that \`[HH:MM:SS]\`.
   要把截图和讨论对应起来，用文件名里的秒数，去看 \`transcript.md\` 中相近时间的内容。
-- The transcript is machine output from Amazon Transcribe and may contain errors (names, numbers, mixed languages). Do not treat it as verbatim.
-  转写由 Amazon Transcribe 机器生成，可能有错误（人名、数字、中英混说），请勿当作逐字稿。
+- The transcript is machine output and may contain errors (names, numbers, mixed languages). Do not treat it as verbatim. The engine is in \`meeting.json\` → \`asr.engine\`: \`aws-transcribe\` = Amazon Transcribe, \`sensevoice-local\` = SenseVoice on the Halo server.
+  转写由机器生成，可能有错误（人名、数字、中英混说），请勿当作逐字稿。所用引擎见 \`meeting.json\` 的 \`asr.engine\`。
 - \`Speaker N\` / \`speaker\` only tells voices apart — it is a number, not a name, and nobody is identified. Numbers hold within one transcription stream only: after a pause / resume or a reconnect the same person may get a different number. Speakers are only labelled when "Identify speakers" was ticked (\`meeting.json\` → \`asr.speakers\`); it is off by default, so most lines have no speaker.
   \`Speaker N\` / \`speaker\` 只用来区分不同的声音，是编号不是姓名，不识别具体是谁。编号只在一条转写流内有效：暂停后继续、断线重连之后，同一个人可能换编号。只有勾选「区分说话人」时才标说话人（\`meeting.json\` 的 \`asr.speakers\`），默认不勾，所以多数行没有说话人。
 - Write your own notes to \`notes.md\`; leave the other files untouched (the recorder is still appending to them while recording).
@@ -490,7 +518,7 @@ async function loadPackage() {
   let raw = null;
   try { raw = new Uint8Array((await fsCall('read', 'meeting.json')).buffer); } catch (e) { if (e.code !== 'not-found') { setNotice('pkg', () => t('pkgBad', e.message), 'err'); renderControls(); return; } }
   if (!raw) {
-    meeting = { format: 'htrans', version: 1, title, createdAt: new Date().toISOString(), status: 'idle', runs: [], shotIntervalSec: 0, asr: { engine: 'aws-transcribe', language: DEFAULT_LANG } };
+    meeting = { format: 'htrans', version: 1, title, createdAt: new Date().toISOString(), status: 'idle', runs: [], shotIntervalSec: 0, asr: { engine: lastEngine(), language: DEFAULT_LANG } };
     await Promise.all([saveMeeting(), persist('README.md', 'write', enc(README))]);
   } else {
     try { meeting = JSON.parse(new TextDecoder().decode(raw)); if (!Array.isArray(meeting.runs)) meeting.runs = []; } catch (e) { setNotice('pkg', () => t('pkgBad', e.message), 'err'); renderControls(); return; }
@@ -516,6 +544,7 @@ async function loadPackage() {
     saveMeeting(); // not awaited: a write being retried must not keep the package from opening
   }
   $('shot').value = String(meeting.shotIntervalSec ?? 0);
+  $('engine').value = ENGINES.includes(meeting.asr?.engine) ? meeting.asr.engine : ENGINES[0];
   if (meeting.asr?.language) $('lang').value = meeting.asr.language;
   if (!$('lang').value) $('lang').value = DEFAULT_LANG;
   $('speakers').checked = meeting.asr?.speakers === true; // off for new meetings and packages from <= 1.0.7
@@ -612,10 +641,13 @@ function writeEntry(e) {
 }
 /** Wall-clock ms before which every sentence is final: no stream -> everything; a partial in progress -> its start;
  *  otherwise speech that began over ~2 s ago would already show as a partial. A partial silent for 10 s is treated as
- *  dropped (the proxy skips empty finals), so a long quiet stretch doesn't hold screenshots indefinitely. */
+ *  dropped (the proxy skips empty finals), so a long quiet stretch doesn't hold screenshots indefinitely.
+ *  On-device sends no partials: a final comes 0.5 s after the speaker pauses, and a segment is cut at 20 s, so anything
+ *  that began over 22 s ago is final — and none can start before the stream's first audio (startWall). */
 const watermark = () => {
   const now = Date.now();
   if (!tx.ws) return Infinity;
+  if (tx.local) return tx.startWall ? Math.max(tx.startWall, now - 22000) : Infinity;
   return tx.partialAt && now - tx.partialSeen < 10000 ? tx.partialAt : now - 2000;
 };
 function releaseShots(before) {
@@ -626,14 +658,20 @@ function releaseShots(before) {
 
 function txOpen() {
   const lang = TX_LANG[$('lang').value] ?? $('lang').value;
+  const local = $('engine').value === LOCAL;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${proto}//${location.host}/api/transcribe/stream?ext=htrans&lang=${encodeURIComponent(lang)}${$('speakers').checked ? '&speakers=1' : ''}`);
+  const spk = $('speakers').checked ? '&speakers=1' : '';
+  const ws = new WebSocket(local ? `${proto}//${location.host}/api/stt/stream?ext=htrans${spk}` : `${proto}//${location.host}/api/transcribe/stream?ext=htrans&lang=${encodeURIComponent(lang)}${spk}`);
   ws.binaryType = 'arraybuffer';
-  Object.assign(tx, { ws, state: 'connecting', ready: false, startWall: 0, partialAt: 0, err: null, closing: false, retryAt: 0 });
+  Object.assign(tx, { ws, local, state: 'connecting', ready: false, startWall: 0, partialAt: 0, err: null, closing: false, retryAt: 0 });
   ws.onmessage = (ev) => {
     if (tx.ws !== ws || typeof ev.data !== 'string') return;
     let m; try { m = JSON.parse(ev.data); } catch { return; }
-    if (m.type === 'ready') { tx.ready = true; tx.state = 'live'; tx.readyAt = Date.now(); tx.failures = 0; setNotice('tx', null); }
+    if (m.type === 'ready') { tx.ready = true; tx.state = 'live'; tx.readyAt = Date.now(); tx.failures = 0; setNotice('tx', null); setNotice('model', null); }
+    else if (m.type === 'model') { // on-device only: first frame, then download progress until ready / error
+      const p = m.total ? Math.min(100, Math.floor((m.received / m.total) * 100)) : 0, mb = m.total ? Math.round(m.total / 1e6) : 0; // decimal MB, as the docs quote it
+      setNotice('model', m.state === 'missing' ? () => `${t('modelMissing')} ${t('modelWait')}` : m.state === 'downloading' ? () => `${t('modelDl', p, mb)} ${t('modelWait')}` : null);
+    }
     else if (m.type === 'partial') {
       partialEl.textContent = m.text || '';
       tx.partialAt = tx.startWall ? Math.round(tx.startWall + m.start * 1000) : 0;
@@ -650,22 +688,24 @@ function txOpen() {
     const wasReady = tx.ready;
     Object.assign(tx, { ws: null, ready: false, startWall: 0, partialAt: 0 });
     partialEl.textContent = '';
+    setNotice('model', null); // a reconnect gets a fresh first `model` frame
     releaseShots(Infinity); // the partial in progress (if any) will never finalize
     tx.onClosed?.(); tx.onClosed = null;
     if (tx.closing || !rec) { tx.state = 'off'; return; }
     // Reconnect policy: transient drops (incl. Transcribe's 4 h cap) retry after ~1 s doubling to 30 s; auth / permission
-    // errors retry only every 60 s so a bad key doesn't spin.
+    // errors (on-device: model download / engine failure) retry only every 60 s so a bad key doesn't spin.
     const code = tx.err?.code;
     if (!wasReady && !tx.err) tx.failures++;
     if (livedMs > 20000) tx.backoff = 1000;
     let delay = tx.backoff;
     tx.backoff = Math.min(tx.backoff * 2, 30000);
     tx.state = 'reconnecting';
-    if (code === 'credentials' || code === 'denied' || code === 'bad-request') { delay = 60000; tx.state = 'error'; }
-    else if (code === 'limit') { delay = Math.max(delay, 15000); tx.state = 'error'; }
-    if (code === 'credentials' || code === 'denied' || code === 'limit') setNotice('tx', () => t(code), 'err');
+    if (code === 'credentials' || code === 'denied' || code === 'bad-request' || code === 'model' || code === 'engine') { delay = 60000; tx.state = 'error'; }
+    else if (code === 'limit' || code === 'busy') { delay = Math.max(delay, 15000); tx.state = 'error'; }
+    if (code === 'credentials' || code === 'denied' || code === 'limit' || code === 'busy') setNotice('tx', () => t(code), 'err');
+    else if (code === 'model') { const msg = tx.err.message || code; setNotice('tx', () => t('modelFail', msg), 'err'); }
     else if (code) { const msg = tx.err.message || code; setNotice('tx', () => msg, 'err'); }
-    else if (tx.failures >= 2) setNotice('tx', () => t('unreachable'), 'err');
+    else if (tx.failures >= 2) setNotice('tx', () => t(tx.local ? 'unreachableLocal' : 'unreachable'), 'err');
     tx.retryAt = Date.now() + delay;
     renderTicker(true);
   };
@@ -688,7 +728,9 @@ function onFinal(m) {
 function onPcm(buf) {
   const ws = tx.ws;
   // Stream as soon as the socket is open — Transcribe only accepts (and the proxy only says `ready`) once audio flows.
+  // On-device is the other way round: audio before `ready` is dropped and start / end count from the first audio after it.
   if (!ws || ws.readyState !== 1 || ws.bufferedAmount > (1 << 20)) return; // disconnected: drop, never buffer hours of audio
+  if (tx.local && !tx.ready) return;
   if (!tx.startWall) tx.startWall = Date.now() - buf.byteLength / 32; // 16 kHz s16 = 32 bytes/ms; stream time 0 = first byte sent
   ws.send(buf);
 }
@@ -746,7 +788,8 @@ async function start() {
     meeting.runs.push(run);
     meeting.status = 'recording';
     meeting.shotIntervalSec = shotSec;
-    meeting.asr = { engine: 'aws-transcribe', language: $('lang').value, speakers: $('speakers').checked };
+    meeting.asr = { engine: $('engine').value, language: $('lang').value, speakers: $('speakers').checked };
+    try { localStorage.setItem(ENGINE_KEY, meeting.asr.engine); } catch { /* storage blocked: new meetings keep the default */ }
     const r = rec = { run, display, micStream, shotSec, nextShotAt: shotSec ? now + 1500 : 0, shotBusy: null, prevThumb: null, pcm: 0 };
 
     if (hasAudio) {
@@ -818,7 +861,7 @@ async function endRun() {
   partialEl.textContent = '';
   r.run.endedAt = Date.now();
   meeting.status = 'stopped';
-  setNotice('tx', null);
+  setNotice('tx', null); setNotice('model', null);
   saveMeeting();
   // Writes still being retried don't hold the controls (a new run queues behind them); the host keeps its unsaved-changes
   // guard until they have all landed, and a run started meanwhile clears it itself when it ends.
@@ -912,6 +955,9 @@ function applyLang() {
   const sel = $('shot'), cur = sel.value || '0';
   sel.replaceChildren(...SHOTS.map((s) => new Option(s ? `${s} ${t('secs')}` : t('off'), String(s))));
   sel.value = cur;
+  const es = $('engine'), ecur = es.value || ENGINES[0];
+  es.replaceChildren(...ENGINES.map((v) => new Option(t('engines')[v], v)));
+  es.value = ecur;
   const ls = $('lang'), lcur = ls.value || DEFAULT_LANG;
   ls.replaceChildren(...LANGS.map((v) => new Option(t('langs')[v], v)));
   ls.value = LANGS.includes(lcur) ? lcur : DEFAULT_LANG;
@@ -924,6 +970,7 @@ function applyLang() {
 
 $('toggle').onclick = () => (phase === 'recording' ? endRun() : start());
 $('micRefresh').onclick = refreshDevices;
+$('engine').onchange = renderControls;
 $('langHelp').onclick = () => { const tip = $('langTip'); tip.hidden = !tip.hidden; $('langHelp').ariaExpanded = String(!tip.hidden); };
 $('copyPrompt').onclick = async () => {
   const text = t('prompt', bundlePath);

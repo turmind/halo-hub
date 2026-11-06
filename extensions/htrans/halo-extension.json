@@ -1,13 +1,13 @@
 {
   "id": "htrans",
   "name": "Meeting Recorder",
-  "version": "1.0.9",
-  "description": "Record a meeting (mic + system/video sound), live captions via Amazon Transcribe, timed screenshots; saved as a .htrans folder an agent can summarize.",
+  "version": "1.0.10",
+  "description": "Record a meeting (mic + system/video sound), live captions via Amazon Transcribe or on-device SenseVoice, timed screenshots; saved as a .htrans folder an agent can summarize.",
   "extensions": [".htrans"],
   "entry": "index.html",
   "priority": "default",
   "bundle": true,
-  "capabilities": ["media", "transcribe"],
+  "capabilities": ["media", "transcribe", "stt-local"],
   "platforms": ["web", "desktop-mac", "desktop-win"],
   "homepage": "https://github.com/turmind/halo-hub/tree/main/extensions/htrans",
   "license": "MIT",
@@ -15,32 +15,32 @@
     "params": [
       {
         "key": "region",
-        "description": "AWS region used for Amazon Transcribe streaming (e.g. us-east-1).",
-        "description_zh": "Amazon Transcribe 流式转写使用的 AWS 区域（如 us-east-1）。",
+        "description": "AWS region used for Amazon Transcribe streaming (e.g. us-east-1). Amazon Transcribe engine only.",
+        "description_zh": "Amazon Transcribe 流式转写使用的 AWS 区域（如 us-east-1）。仅用于 Amazon Transcribe 引擎。",
         "default": "us-east-1"
       },
       {
         "key": "auto_languages",
-        "description": "Candidate languages for the \"Auto\" language option: 2–5 comma-separated Amazon Transcribe codes, one dialect per language (default Mandarin, Cantonese, English).",
-        "description_zh": "「自动」语言选项的候选语言：2–5 个 Amazon Transcribe 语言代码，逗号分隔，同一语言只能选一种方言（默认普通话、粤语、英语）。",
+        "description": "Candidate languages for the \"Auto\" language option: 2–5 comma-separated Amazon Transcribe codes, one dialect per language (default Mandarin, Cantonese, English). Amazon Transcribe engine only.",
+        "description_zh": "「自动」语言选项的候选语言：2–5 个 Amazon Transcribe 语言代码，逗号分隔，同一语言只能选一种方言（默认普通话、粤语、英语）。仅用于 Amazon Transcribe 引擎。",
         "default": "zh-CN,zh-HK,en-US"
       }
     ],
     "secrets": [
       {
         "key": "access_key_id",
-        "description": "AWS access key id. Leave empty to use the machine's default AWS credentials.",
-        "description_zh": "AWS Access Key ID。留空则使用本机默认的 AWS 凭证。"
+        "description": "AWS access key id for Amazon Transcribe. Leave empty to use the machine's default AWS credentials.",
+        "description_zh": "AWS Access Key ID（Amazon Transcribe 用）。留空则使用本机默认的 AWS 凭证。"
       },
       {
         "key": "secret_access_key",
-        "description": "AWS secret access key. Leave empty to use the machine's default AWS credentials.",
-        "description_zh": "AWS Secret Access Key。留空则使用本机默认的 AWS 凭证。"
+        "description": "AWS secret access key for Amazon Transcribe. Leave empty to use the machine's default AWS credentials.",
+        "description_zh": "AWS Secret Access Key（Amazon Transcribe 用）。留空则使用本机默认的 AWS 凭证。"
       },
       {
         "key": "session_token",
-        "description": "AWS session token (only for temporary credentials). Leave empty to use the machine's default AWS credentials.",
-        "description_zh": "AWS Session Token（仅临时凭证需要）。留空则使用本机默认的 AWS 凭证。"
+        "description": "AWS session token (only for temporary credentials) for Amazon Transcribe. Leave empty to use the machine's default AWS credentials.",
+        "description_zh": "AWS Session Token（仅临时凭证需要）（Amazon Transcribe 用）。留空则使用本机默认的 AWS 凭证。"
       }
     ]
   }
