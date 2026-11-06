@@ -2,7 +2,7 @@
   "id": "htrans",
   "name": "Meeting Recorder",
   "version": "1.0.10",
-  "description": "Record a meeting (mic + system/video sound), live captions via Amazon Transcribe or on-device SenseVoice, timed screenshots; saved as a .htrans folder an agent can summarize.",
+  "description": "Record a meeting (mic + system/video sound), live captions via Amazon Transcribe or on-device SenseVoice (its speaker labels need Halo 2.2.2), timed screenshots; a .htrans folder for an agent.",
   "extensions": [".htrans"],
   "entry": "index.html",
   "priority": "default",
