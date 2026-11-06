@@ -1,6 +1,7 @@
 {
   "id": "htrans",
-  "version": "1.0.9",
-  "url": "https://github.com/turmind/halo-hub/releases/download/htrans-v1.0.9/htrans-1.0.9.zip",
-  "sha256": "c9a415f1b1ac1504792e0b72ce2894141dcb1224546e5f03e89f89cd2d3cac1d"
+  "version": "1.0.10",
+  "url": "https://github.com/turmind/halo-hub/releases/download/htrans-v1.0.10/htrans-1.0.10.zip",
+  "sha256": "064caf2b2895029355a935df990c73dc078907e275acb31f5274b7ac6d4c67ae",
+  "minHalo": "2.2.2"
 }
