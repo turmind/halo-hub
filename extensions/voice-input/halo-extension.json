@@ -1,7 +1,7 @@
 {
   "id": "voice-input",
   "name": "Voice Input",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Dictate into the chat box: speech is transcribed on your own Halo server (SenseVoice, zh / en / yue / ja / ko) and inserted at the cursor. Never sends.",
   "extensions": [],
   "entry": "index.html",

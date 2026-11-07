@@ -15,7 +15,7 @@ Halo chat-bar extension for dictation. Installing it adds a **microphone button 
 ## Requirements
 
 - **Halo ≥ 1.6.5**: needs the chat-bar extension slot and the server's on-device speech-to-text (`/api/stt/stream`).
-- **First use downloads about 240 MB** of model files to the server (`~/.halo/global/stt-models/`). The download starts as soon as the extension is installed. If you click the mic before it finishes, the panel shows the progress and starts listening by itself when the model is ready; anything said before that isn't recognized, so start speaking once it says "Listening…". Closing the panel meanwhile doesn't stop the download.
+- **First use downloads about 270 MB** (about 240 MB before Halo 2.2.2) of model files to the server (`~/.halo/global/stt-models/`). The download starts as soon as the extension is installed. If you click the mic before it finishes, the panel shows the progress and starts listening by itself when the model is ready; anything said before that isn't recognized, so start speaking once it says "Listening…". Closing the panel meanwhile doesn't stop the download.
 - Server resources: transcription uses **2–4 CPU cores** while it decodes a sentence. Once used, the engine stays **resident at about 400 MB** of RAM.
 - The microphone needs a secure page: **HTTPS or localhost**, or the Halo desktop app (Mac / Windows).
 
