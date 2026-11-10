@@ -44,7 +44,8 @@ Model provider configs — the same yamls Halo bundles in `packages/server/templ
 | ids | Revision |
 |---|---|
 | `zhipu` | `2026101002` |
-| `anthropic` `aws-bedrock-claude-invoke` `openai` | `2026101005` |
+| `anthropic` `openai` | `2026101005` |
+| `aws-bedrock-claude-invoke` | `2026111001` |
 | `deepseek` `hunyuan` `qwen` | `2026101101` |
 | `gemini` | `2026101201` |
 | `mimo-token-plan-china` | `2026101401` |
