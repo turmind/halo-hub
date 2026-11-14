@@ -1,5 +1,6 @@
 // Voice Input — see README.md. Mic -> AudioWorklet (pcm-worklet.js, 16 kHz mono s16le) -> the Halo server's on-device
-// speech-to-text WebSocket (/api/stt/stream). Every `final` is inserted at the chat-box caret with `insert-text`.
+// speech-to-text WebSocket — this extension's own backend (backend/index.cjs), which Halo runs on demand and forwards
+// /api/ext/voice-input/* to. Every `final` is inserted at the chat-box caret with `insert-text`.
 // The protocol has no frame that sends a message: the user always presses Send.
 // One click: the host mounts this panel from the toolbar button and recording starts on `init`. While a recording has
 // audio in flight we report `busy`, so closing the panel (toolbar button again, ×, Esc) arrives as `close-request`:
@@ -45,7 +46,7 @@ const T = {
     errEngine: (m) => `The on-device speech engine is unavailable: ${m}`,
     errBusy: 'The server is busy. Try again in a moment.',
     errOther: (m) => `Speech recognition failed: ${m}`,
-    unreachable: 'Cannot reach the speech service (logged out, or Halo is older than 1.6.5).',
+    unreachable: 'Cannot reach the speech service (logged out, or this Halo has no extension backends yet).',
     dropped: 'The connection to the server was lost.',
     noMedia: 'Voice input needs a secure page: open Halo over HTTPS (or on localhost), or use the Halo desktop app.',
     micDenied: 'Microphone access was denied. Allow it in the browser’s site settings (or the system’s privacy settings) and try again.',
@@ -77,7 +78,7 @@ const T = {
     errEngine: (m) => `本机语音引擎不可用：${m}`,
     errBusy: '服务器繁忙，请稍后再试',
     errOther: (m) => `语音识别出错：${m}`,
-    unreachable: '无法连接语音服务（未登录，或 Halo 版本低于 1.6.5）',
+    unreachable: '无法连接语音服务（未登录，或当前 Halo 还不支持扩展后端）',
     dropped: '与服务器的连接已断开',
     noMedia: '语音输入需要安全连接：请通过 HTTPS（或 localhost）打开 Halo，或使用 Halo 桌面版',
     micDenied: '麦克风权限被拒绝，请到浏览器的网站设置（或系统的隐私设置）里允许后重试',
@@ -253,7 +254,7 @@ async function start() {
 
 function openWs(r) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = r.ws = new WebSocket(`${proto}//${location.host}/api/stt/stream?ext=voice-input`);
+  const ws = r.ws = new WebSocket(`${proto}//${location.host}/api/ext/voice-input/stream`);
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => { r.opened = true; };
   ws.onmessage = (ev) => {

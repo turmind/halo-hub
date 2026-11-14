@@ -1,0 +1,16 @@
+{
+  "name": "halo-ext-voice-input",
+  "private": true,
+  "description": "Build inputs for the voice-input backend (bundled to backend/index.mjs by build.sh; node_modules/sherpa-onnx-* copied into backend/node_modules).",
+  "type": "module",
+  "dependencies": {
+    "sherpa-onnx-node": "1.13.8",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.7.0"
+  }
+}

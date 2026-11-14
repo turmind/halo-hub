@@ -53,7 +53,7 @@ function packExtension() {
   const out = resolve(`dist/${m.id}-${m.version}.zip`);
   // zip contents at the archive root (no wrapper dir) — matches what the installer expects; -X drops extra attrs, -r recursive.
   // Build inputs (src/, package*.json, build.sh, fetch-deps.sh, node_modules/) stay out of the zip.
-  execFileSync('zip', ['-r', '-X', '-q', out, '.', '-x', 'fetch-deps.sh', 'build.sh', 'node_modules/*', 'src/*', 'package.json', 'package-lock.json', 'update.json', '.DS_Store'], { cwd: dir, stdio: 'inherit' });
+  execFileSync('zip', ['-r', '-X', '-q', out, '.', '-x', 'fetch-deps.sh', 'build.sh', 'node_modules/*', 'src/*', 'package.json', 'package-lock.json', 'tsconfig.json', 'update.json', '.DS_Store'], { cwd: dir, stdio: 'inherit' });
   console.log(out);
   // Written to dist/, never to extensions/<id>/update.json: re-packing a version changes the zip bytes (and sha256), so only
   // the copy cp'd in after `gh release create` may sit in the repo. minHalo is inherited from that committed copy.
@@ -103,6 +103,12 @@ function manifestError(m) {
     for (const k of ['title', 'title_zh']) if (c[k] !== undefined && (typeof c[k] !== 'string' || c[k].trim() === '' || c[k].length > 64)) return `chatbar.${k} must be a non-empty string (≤ 64 chars)`;
     if (c.height !== undefined && (!Number.isInteger(c.height) || c.height < 80 || c.height > 480)) return 'chatbar.height must be an integer 80–480';
     if (c.order !== undefined && (!Number.isInteger(c.order) || c.order < 0 || c.order > 1000)) return 'chatbar.order must be an integer 0–1000';
+  }
+  if (m.backend !== undefined) {
+    const b = m.backend;
+    if (!isObj(b)) return 'backend must be an object';
+    if (typeof b.entry !== 'string' || b.entry === '' || b.entry.startsWith('/') || b.entry.split(/[\\/]/).includes('..') || !/\.(js|mjs|cjs)$/.test(b.entry)) return 'backend.entry must be a relative .js / .mjs / .cjs path inside the extension directory';
+    if (!isFile(`${dir}/${b.entry}`)) return `backend entry not found: ${b.entry}`;
   }
   if (m.activity !== undefined || m.chatbar !== undefined) {
     if (!Array.isArray(m.extensions)) return 'extensions must be an array (empty is fine with activity or chatbar)';
