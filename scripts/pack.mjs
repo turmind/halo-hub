@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 // usage: node scripts/pack.mjs extensions/glb   → dist/glb-1.0.0.zip
+//        node scripts/pack.mjs extensions/voice-input --platforms
+//            → shared/stt-backend/build.sh per platform, dist/voice-input-1.1.0-<os>-<arch>.zip each, and one update.json
+//              whose `packages` maps <os>-<arch> → { url, sha256 } (an extension that ships native code; see PLATFORMS_NATIVE)
 //        node scripts/pack.mjs models           → dist/models-<YYYY.MM.DD>.zip (today, UTC)
 //        node scripts/pack.mjs skills/web-search → dist/skill-web-search-<config.yaml version>.zip
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, rmSync, statSync } from 'node:fs';
@@ -13,14 +16,21 @@ import { createHash } from 'node:crypto';
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const VERSION_RE = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 const FILE_EXT_RE = /^\.[a-z0-9]+$/;
-const CAPABILITIES = ['save', 'media', 'transcribe', 'fs-read', 'stt-local'];
+const CAPABILITIES = ['save', 'media', 'transcribe', 'fs-read'];
 const PLATFORMS = ['web', 'desktop-mac', 'desktop-win', 'desktop-linux'];
 const SETTING_KEY_RE = /^[a-z][a-z0-9_]{0,63}$/;
 const SETTING_TYPES = ['string', 'int', 'float', 'boolean', 'enum'];
 // update.json is read from raw.githubusercontent.com but the zip lives on the release host, so its url must be absolute.
 const RELEASE_BASE = 'https://github.com/turmind/halo-hub/releases/download';
 
+// Platforms a native backend is built for — sherpa-onnx's prebuilt packages minus win-ia32 (no Halo build runs there).
+// The host picks its own entry from update.json `packages` (halo-agent updates/update-json.ts hostPackagePlatform).
+const PLATFORMS_NATIVE = ['linux-x64', 'linux-arm64', 'darwin-arm64', 'darwin-x64', 'win-x64'];
+// The top-level url / sha256 a Halo that predates `packages` would fetch (minHalo keeps it from doing so).
+const DEFAULT_NATIVE = 'linux-x64';
+
 const dir = resolve(process.argv[2] ?? '');
+const perPlatform = process.argv[3] === '--platforms';
 
 if (basename(dir) === 'models' && !existsSync(`${dir}/halo-extension.json`)) packModels();
 else if (basename(resolve(dir, '..')) === 'skills' && existsSync(`${dir}/SKILL.md`)) packSkill();
@@ -43,26 +53,50 @@ function packSkill() {
   console.log(out);
 }
 
+/** Zip `dir` to dist/<name>.zip, contents at the archive root (no wrapper dir) — matches what the installer expects;
+ *  -X drops extra attrs, -r recursive. Build inputs (src/, package*.json, build.sh, fetch-deps.sh, node_modules/) stay
+ *  out; backend/PLATFORM is build.sh's marker. Returns [path, sha256]. */
+function zipDir(name) {
+  const out = resolve(`dist/${name}.zip`);
+  rmSync(out, { force: true });
+  execFileSync('zip', ['-r', '-X', '-q', out, '.', '-x', 'fetch-deps.sh', 'build.sh', 'node_modules/*', 'src/*', 'package.json', 'package-lock.json', 'tsconfig.json', 'update.json', 'backend/PLATFORM', '.DS_Store'], { cwd: dir, stdio: 'inherit' });
+  console.log(`${out} (${(statSync(out).size / 1048576).toFixed(1)} MB)`);
+  return [out, createHash('sha256').update(readFileSync(out)).digest('hex')];
+}
+
 function packExtension() {
-  if (!existsSync(`${dir}/halo-extension.json`)) { console.error('usage: pack.mjs extensions/<id>  (needs halo-extension.json) | pack.mjs models'); process.exit(1); }
+  if (!existsSync(`${dir}/halo-extension.json`)) { console.error('usage: pack.mjs extensions/<id> [--platforms]  (needs halo-extension.json) | pack.mjs models'); process.exit(1); }
   let m;
   try { m = JSON.parse(readFileSync(`${dir}/halo-extension.json`, 'utf8')); } catch (e) { console.error(`halo-extension.json unreadable: ${e.message}`); process.exit(1); }
-  const bad = manifestError(m);
-  if (bad) { console.error(`${basename(dir)}/halo-extension.json: ${bad}`); process.exit(1); }
   mkdirSync('dist', { recursive: true });
-  const out = resolve(`dist/${m.id}-${m.version}.zip`);
-  // zip contents at the archive root (no wrapper dir) — matches what the installer expects; -X drops extra attrs, -r recursive.
-  // Build inputs (src/, package*.json, build.sh, fetch-deps.sh, node_modules/) stay out of the zip.
-  execFileSync('zip', ['-r', '-X', '-q', out, '.', '-x', 'fetch-deps.sh', 'build.sh', 'node_modules/*', 'src/*', 'package.json', 'package-lock.json', 'tsconfig.json', 'update.json', '.DS_Store'], { cwd: dir, stdio: 'inherit' });
-  console.log(out);
+  const release = `${RELEASE_BASE}/${m.id}-v${m.version}`;
+  let url, sha256, packages;
+  if (perPlatform) {
+    // One build + zip per platform: build.sh rewrites backend/ for each, so the manifest check runs on every build.
+    packages = {};
+    for (const plat of PLATFORMS_NATIVE) {
+      execFileSync(resolve('shared/stt-backend/build.sh'), [dir, plat], { stdio: 'inherit' });
+      const bad = manifestError(m);
+      if (bad) { console.error(`${basename(dir)}/halo-extension.json: ${bad}`); process.exit(1); }
+      const name = `${m.id}-${m.version}-${plat}`;
+      packages[plat] = { url: `${release}/${name}.zip`, sha256: zipDir(name)[1] };
+    }
+    ({ url, sha256 } = packages[DEFAULT_NATIVE]);
+  } else {
+    const bad = manifestError(m);
+    if (bad) { console.error(`${basename(dir)}/halo-extension.json: ${bad}`); process.exit(1); }
+    url = `${release}/${m.id}-${m.version}.zip`;
+    sha256 = zipDir(`${m.id}-${m.version}`)[1];
+  }
   // Written to dist/, never to extensions/<id>/update.json: re-packing a version changes the zip bytes (and sha256), so only
   // the copy cp'd in after `gh release create` may sit in the repo. minHalo is inherited from that committed copy.
   const committed = existsSync(`${dir}/update.json`) ? JSON.parse(readFileSync(`${dir}/update.json`, 'utf8')) : {};
   const update = {
     id: m.id,
     version: m.version,
-    url: `${RELEASE_BASE}/${m.id}-v${m.version}/${m.id}-${m.version}.zip`,
-    sha256: createHash('sha256').update(readFileSync(out)).digest('hex'),
+    url,
+    sha256,
+    ...(packages && { packages }),
     ...(committed.minHalo !== undefined && { minHalo: committed.minHalo }),
   };
   const updateOut = resolve(`dist/${m.id}-${m.version}.update.json`);

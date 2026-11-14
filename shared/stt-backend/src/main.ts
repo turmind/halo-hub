@@ -1,8 +1,9 @@
 /**
- * voice-input backend — run by Halo as this extension's own child process
- * (manifest `backend.entry`), reached from the iframe through
- * `/api/ext/voice-input/*`. Halo starts it on the first request and stops it
- * after a few idle minutes; exiting is what gives the ~400 MB the speech
+ * On-device speech-to-text backend, built into each extension that uses it
+ * (voice-input, htrans — one copy each, see ../README.md). Halo runs it as
+ * that extension's own child process (manifest `backend.entry`), reached from
+ * the iframe through `/api/ext/<id>/*`; it starts on the first request and
+ * stops after 5 idle minutes — exiting is what gives the ~400 MB the speech
  * engine pins back to the OS.
  *
  *   WS /stream[?speakers=1]   PCM s16le mono 16 kHz in, `model` / `ready` /
@@ -13,6 +14,15 @@
  * HALO_EXT_DATA_DIR = our data dir (models go to <dir>/models/), and
  * `process.send({ type: 'ready' })` once listening. Auth is Halo's: only
  * logged-in admin requests are forwarded here.
+ *
+ * Writes: only `$HALO_EXT_DATA_DIR/models/` (each file as `<name>.part`,
+ * renamed once verified). Audio and text are never stored.
+ *
+ * Model files are fetched on start (Halo starts us once when the admin
+ * confirms the backend, so installing + confirming starts the download, as
+ * Halo's built-in STT did on install) and on every stream while not ready.
+ * While a download runs with nobody watching we tell Halo `busy` so the idle
+ * stop doesn't cut it off.
  *
  * Ported from halo-agent packages/server/src/routes/stt-ws.ts.
  */
@@ -144,6 +154,16 @@ try { fs.rmSync(socketPath, { force: true }) } catch { /* Windows named pipe */ 
 server.listen(socketPath, () => {
   console.log(`listening (rss=${Math.round(process.memoryUsage().rss / 1048576)}MB)`)
   process.send?.({ type: 'ready' })
+  // Hold Halo's idle stop off while the models download (busy is cleared on
+  // any end state: ready, error, or close()).
+  let busy = false
+  const hold = (s: SttModelStatus) => {
+    const next = s.state === 'downloading'
+    if (next !== busy) { busy = next; process.send?.({ type: 'busy', busy }) }
+  }
+  models.subscribe(hold)
+  void models.ensure()
+  hold(models.status())
 })
 
 function shutdown(): void {

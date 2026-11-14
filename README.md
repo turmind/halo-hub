@@ -26,11 +26,11 @@ dist/               Build output — packaged zips, not committed
 | `drawio` | `.drawio` `.dio` | ✓ | Offline draw.io editor (~22 MB zip); release-zip install only |
 | `excalidraw` | `.excalidraw` | ✓ | Offline Excalidraw whiteboard (~16 MB zip); release-zip install only |
 | `ipynb` | `.ipynb` | ✓ | Jupyter notebooks: render (markdown, math, outputs), edit and save cells offline; run them on a Jupyter kernel through the Halo server (Halo ≥ 1.6.1 with `pip install jupyter_server ipykernel` on the server; editing works on 1.6.0) |
-| `htrans` | `.htrans` (folder) | ✓ | Meeting recorder: mic + system sound, live captions labelled by speaker (Speaker 1, 2, … — not names), timed screenshots. Engine per meeting: Amazon Transcribe (the server's transcribe proxy + AWS credentials) or on-device SenseVoice on your Halo server (Halo ≥ 1.6.5, speaker labels ≥ 2.2.2; the server downloads ~270 MB of model files on install) |
+| `htrans` | `.htrans` (folder) | ✓ | Meeting recorder: mic + system sound, live captions labelled by speaker (Speaker 1, 2, … — not names), timed screenshots. Engine per meeting: Amazon Transcribe (the server's transcribe proxy + AWS credentials) or on-device SenseVoice — its own backend on your Halo server (Halo ≥ 2.3.0; confirm it once in Settings → Extensions, it then downloads ~270 MB of model files; one zip per server platform) |
 | `megadrive` | `.mega` (folder) | — | Offline Mega Drive / Genesis (+ Master System / Game Gear) emulator, EmulatorJS + Genesis Plus GX (~1.5 MB zip). The folder holds `game.json` (which ROM, anywhere on the machine — `.zip` `.7z` `.md` `.gen` `.smd` `.bin` `.sms` `.gg`, read in place, never copied — and the display filter) and `saves/`; keyboard, gamepad, touch stick; two players (keyboard + gamepad or two gamepads); non-commercial core license, no ROMs; release-zip install only |
 | `arcade` | `.arcade` (folder) | — | Offline arcade emulator, EmulatorJS + FinalBurn Neo (~8.5 MB zip). The folder holds `game.json` (which romset, anywhere on the machine — an unmodified `.zip` named after the set, read in place, never copied; parent / BIOS zips such as `neogeo.zip` are picked up from the same folder — and the display filter) and `saves/`; keyboard, gamepad, touch stick; two players (keyboard + gamepad or two gamepads); FBNeo licence forbids any commercial use, no ROMs; release-zip install only |
 | `halo-city` | — (activity-bar entry) | — | Live pixel city of the server; needs Halo ≥ 1.6.5 |
-| `voice-input` | — (chat-bar button) | — | Dictation into the chat box, inserted at the cursor and never sent. Transcribed on your own Halo server (SenseVoice-Small, FunASR Model License; zh / en / yue / ja / ko). Needs Halo ≥ 1.6.5; the server downloads ~270 MB of model files on first use (~240 MB before Halo 2.2.2) |
+| `voice-input` | — (chat-bar button) | — | Dictation into the chat box, inserted at the cursor and never sent. Transcribed on your own Halo server by its own backend (SenseVoice-Small, FunASR Model License; zh / en / yue / ja / ko). Needs Halo ≥ 2.3.0; confirm it once in Settings → Extensions, it then downloads ~270 MB of model files; one zip per server platform |
 
 **Models** (`models/<id>.yaml`, release tag `models-v<YYYY.MM.DD>`)
 
@@ -75,7 +75,7 @@ Extensions install globally (under `~/.halo/global/`). Three ways:
 
 - **Agent**: `/extension install <id>` — downloads the latest `<id>-v*` release zip from this repo.
 - **Admin**: Extensions panel → upload the `<id>-<version>.zip` from a GitHub release.
-- **Manual**: unzip a release zip into `~/.halo/global/extensions/<id>/`. For extensions whose runtime files are committed (`glb`, `ipynb`, `halo-city`), `cp -r extensions/<id> ~/.halo/global/extensions/` also works; `drawio` and `excalidraw` need their `fetch-deps.sh` / `build.sh` run first, so use the release zip.
+- **Manual**: unzip a release zip into `~/.halo/global/extensions/<id>/`. For extensions whose runtime files are committed (`glb`, `ipynb`, `halo-city`), `cp -r extensions/<id> ~/.halo/global/extensions/` also works; `drawio` and `excalidraw` need their `fetch-deps.sh` / `build.sh` run first, and `voice-input` / `htrans` need `shared/stt-backend/build.sh extensions/<id>` (their speech backend), so use the release zip.
 
 ## Publishing
 
@@ -87,6 +87,15 @@ node scripts/pack.mjs extensions/<id>          # → dist/<id>-<version>.zip + d
 gh release create <id>-v<version> dist/<id>-<version>.zip --title "<id> v<version>"
 cp dist/<id>-<version>.update.json extensions/<id>/update.json   # then commit and push
 ```
+
+An extension with a native backend (`voice-input`, `htrans` — the on-device speech engine in `shared/stt-backend/`, built into each, no shared install) is released as one zip per server platform under the same tag:
+
+```bash
+node scripts/pack.mjs extensions/<id> --platforms   # → dist/<id>-<version>-<os>-<arch>.zip × 5 + dist/<id>-<version>.update.json
+gh release create <id>-v<version> dist/<id>-<version>-*.zip --title "<id> v<version>"
+```
+
+Its update.json lists them under `packages` (`"linux-x64": { "url", "sha256" }`, … — npm's native-package names: linux-x64, linux-arm64, darwin-arm64, darwin-x64, win-x64); Halo ≥ 2.3.0 and the `extension` skill install the entry for the server's own platform. The top-level `url` / `sha256` repeat the linux-x64 entry for older readers, which `minHalo` 2.3.0 keeps from installing it. `build.sh` fetches each platform's native sherpa-onnx package with `npm pack`, so every zip builds on one Linux machine.
 
 `extensions/<id>/update.json` is what Halo ≥ 2.0.2 reads to check for and install updates (zip `url` + `sha256`), so commit it only after the release is up. `minHalo` is not generated: edit it by hand in the committed `update.json` and `pack.mjs` carries it over.
 

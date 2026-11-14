@@ -46,7 +46,8 @@ const T = {
     errEngine: (m) => `The on-device speech engine is unavailable: ${m}`,
     errBusy: 'The server is busy. Try again in a moment.',
     errOther: (m) => `Speech recognition failed: ${m}`,
-    unreachable: 'Cannot reach the speech service (logged out, or this Halo has no extension backends yet).',
+    unreachable: 'Cannot reach the speech service (logged out, or Halo is older than 2.3.0).',
+    needsConfirm: 'Voice input has to be confirmed first: open Settings → Extensions and press Confirm on Voice Input (it runs its speech engine on your Halo server).',
     dropped: 'The connection to the server was lost.',
     noMedia: 'Voice input needs a secure page: open Halo over HTTPS (or on localhost), or use the Halo desktop app.',
     micDenied: 'Microphone access was denied. Allow it in the browser’s site settings (or the system’s privacy settings) and try again.',
@@ -78,7 +79,8 @@ const T = {
     errEngine: (m) => `本机语音引擎不可用：${m}`,
     errBusy: '服务器繁忙，请稍后再试',
     errOther: (m) => `语音识别出错：${m}`,
-    unreachable: '无法连接语音服务（未登录，或当前 Halo 还不支持扩展后端）',
+    unreachable: '无法连接语音服务（未登录，或 Halo 版本低于 2.3.0）',
+    needsConfirm: '语音输入需要先确认：打开 设置 → 扩展，在「Voice Input」一行点「确认」（它的语音引擎在你的 Halo 服务器上运行）',
     dropped: '与服务器的连接已断开',
     noMedia: '语音输入需要安全连接：请通过 HTTPS（或 localhost）打开 Halo，或使用 Halo 桌面版',
     micDenied: '麦克风权限被拒绝，请到浏览器的网站设置（或系统的隐私设置）里允许后重试',
@@ -272,10 +274,22 @@ function openWs(r) {
     teardown(r);
     let why = null;
     if (r.err) why = sttError(r.err);
-    else if (!r.opened) why = () => t('unreachable');
+    else if (!r.opened) { // the handshake failed: ask over HTTP why (a browser can't read a refused upgrade's status)
+      void backendUnconfirmed().then((no) => { if (rec === r) toIdle(() => t(no ? 'needsConfirm' : 'unreachable')); });
+      return;
+    }
     else if (ev.code !== 1000 && !r.closing) why = () => t('dropped');
     toIdle(why, r.restart && !why);
   };
+}
+
+/** True when Halo holds this extension's backend until an admin confirms it in Settings → Extensions (403
+ *  `backend-unconfirmed`). Same-origin, so the login cookie goes along; anything else (logged out, offline) = false. */
+async function backendUnconfirmed() {
+  try {
+    const res = await fetch('/api/ext/voice-input/');
+    return res.status === 403 && (await res.json()).code === 'backend-unconfirmed';
+  } catch { return false; }
 }
 
 /** One recognized segment -> the chat draft at the caret. The joiner space is ours; the host inserts text verbatim. */

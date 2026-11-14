@@ -3,5 +3,5 @@
   "version": "1.0.10",
   "url": "https://github.com/turmind/halo-hub/releases/download/htrans-v1.0.10/htrans-1.0.10.zip",
   "sha256": "064caf2b2895029355a935df990c73dc078907e275acb31f5274b7ac6d4c67ae",
-  "minHalo": "2.2.2"
+  "minHalo": "2.3.0"
 }

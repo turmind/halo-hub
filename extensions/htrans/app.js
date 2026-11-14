@@ -48,7 +48,8 @@ const T = {
     denied: 'AWS denied access — the credentials need the IAM permission transcribe:StartStreamTranscriptionWebSocket / transcribe:StartStreamTranscription.',
     limit: 'Amazon Transcribe is throttling or at its limit — backing off.',
     unreachable: 'Cannot reach the transcription service (not logged in, extension not allowed, or the server has no transcribe proxy).',
-    unreachableLocal: 'Cannot reach the on-device speech service (not logged in, or Halo is older than 1.6.5).',
+    unreachableLocal: 'Cannot reach the on-device speech service (not logged in, or Halo is older than 2.3.0).',
+    needsConfirm: 'The on-device engine has to be confirmed first: open Settings → Extensions and press Confirm on Meeting Recorder (it runs on your Halo server). Captions start by themselves after that; the audio is recorded meanwhile.',
     busy: 'The on-device speech engine is overloaded (too much audio waiting) — backing off.',
     pkgBad: (m) => `Cannot read this package: ${m}`,
     fsFail: (m) => `Writing to the package failed: ${m}`,
@@ -100,7 +101,8 @@ const T = {
     denied: 'AWS 拒绝访问——凭证需要 IAM 权限 transcribe:StartStreamTranscriptionWebSocket / transcribe:StartStreamTranscription。',
     limit: 'Amazon Transcribe 触发限流或上限，正在退避重试。',
     unreachable: '无法连接转写服务（未登录、扩展无权限，或服务器没有转写代理）。',
-    unreachableLocal: '无法连接本机转写服务（未登录，或 Halo 低于 1.6.5）。',
+    unreachableLocal: '无法连接本机转写服务（未登录，或 Halo 低于 2.3.0）。',
+    needsConfirm: '本机引擎需要先确认：打开 设置 → 扩展，在「Meeting Recorder」一行点「确认」（它在你的 Halo 服务器上运行）。确认后字幕会自动开始，录音不受影响。',
     busy: '本机转写引擎繁忙（待处理音频过多），正在退避重试。',
     pkgBad: (m) => `无法读取该会议包：${m}`,
     fsFail: (m) => `写入会议包失败：${m}`,
@@ -660,8 +662,9 @@ function txOpen() {
   const lang = TX_LANG[$('lang').value] ?? $('lang').value;
   const local = $('engine').value === LOCAL;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const spk = $('speakers').checked ? '&speakers=1' : '';
-  const ws = new WebSocket(local ? `${proto}//${location.host}/api/stt/stream?ext=htrans${spk}` : `${proto}//${location.host}/api/transcribe/stream?ext=htrans&lang=${encodeURIComponent(lang)}${spk}`);
+  const spk = $('speakers').checked;
+  // On-device = this extension's own backend (backend/index.cjs), which Halo runs on demand behind /api/ext/htrans/*.
+  const ws = new WebSocket(local ? `${proto}//${location.host}/api/ext/htrans/stream${spk ? '?speakers=1' : ''}` : `${proto}//${location.host}/api/transcribe/stream?ext=htrans&lang=${encodeURIComponent(lang)}${spk ? '&speakers=1' : ''}`);
   ws.binaryType = 'arraybuffer';
   Object.assign(tx, { ws, local, state: 'connecting', ready: false, startWall: 0, partialAt: 0, err: null, closing: false, retryAt: 0 });
   ws.onmessage = (ev) => {
@@ -705,12 +708,30 @@ function txOpen() {
     if (code === 'credentials' || code === 'denied' || code === 'limit' || code === 'busy') setNotice('tx', () => t(code), 'err');
     else if (code === 'model') { const msg = tx.err.message || code; setNotice('tx', () => t('modelFail', msg), 'err'); }
     else if (code) { const msg = tx.err.message || code; setNotice('tx', () => msg, 'err'); }
-    else if (tx.failures >= 2) setNotice('tx', () => t(tx.local ? 'unreachableLocal' : 'unreachable'), 'err');
+    else if (tx.local && !wasReady) { // the handshake failed: ask over HTTP why (a browser can't read a refused upgrade's status)
+      const failures = tx.failures;
+      void backendUnconfirmed().then((no) => {
+        if (tx.ws || tx.closing || !rec) return;
+        if (no) { tx.state = 'error'; tx.backoff = 1000; tx.retryAt = Date.now() + 5000; setNotice('tx', () => t('needsConfirm'), 'err'); } // retry soon: captions start right after the confirm
+        else if (failures >= 2) setNotice('tx', () => t('unreachableLocal'), 'err');
+        renderTicker(true);
+      });
+    }
+    else if (tx.failures >= 2) setNotice('tx', () => t('unreachable'), 'err');
     tx.retryAt = Date.now() + delay;
     renderTicker(true);
   };
   ws.onclose = closed;
   ws.onerror = () => { /* onclose always follows */ };
+}
+
+/** True when Halo holds the on-device backend until an admin confirms it in Settings → Extensions (403
+ *  `backend-unconfirmed`). Same-origin, so the login cookie goes along; anything else (logged out, offline) = false. */
+async function backendUnconfirmed() {
+  try {
+    const res = await fetch('/api/ext/htrans/');
+    return res.status === 403 && (await res.json()).code === 'backend-unconfirmed';
+  } catch { return false; }
 }
 
 function onFinal(m) {

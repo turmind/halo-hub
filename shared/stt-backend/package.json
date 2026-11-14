@@ -1,7 +1,7 @@
 {
-  "name": "halo-ext-voice-input",
+  "name": "halo-hub-stt-backend",
   "private": true,
-  "description": "Build inputs for the voice-input backend (bundled to backend/index.mjs by build.sh; node_modules/sherpa-onnx-* copied into backend/node_modules).",
+  "description": "On-device speech backend (SenseVoice + Silero VAD + speaker labels via sherpa-onnx) built into voice-input and htrans by build.sh \u2014 one copy per extension, no shared install.",
   "type": "module",
   "dependencies": {
     "sherpa-onnx-node": "1.13.8",
