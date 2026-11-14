@@ -1,7 +1,29 @@
 {
   "id": "voice-input",
-  "version": "1.0.1",
-  "url": "https://github.com/turmind/halo-hub/releases/download/voice-input-v1.0.1/voice-input-1.0.1.zip",
-  "sha256": "d4d9abcd7b1a51ca62dd09b508507992284e7bfa787de7b55f9ccf32afc4e612",
+  "version": "1.1.0",
+  "url": "https://github.com/turmind/halo-hub/releases/download/voice-input-v1.1.0/voice-input-1.1.0-linux-x64.zip",
+  "sha256": "71392adf29ef3a2a28321738162b558ac43b397dba1b7130d99051a8107fafc9",
+  "packages": {
+    "linux-x64": {
+      "url": "https://github.com/turmind/halo-hub/releases/download/voice-input-v1.1.0/voice-input-1.1.0-linux-x64.zip",
+      "sha256": "71392adf29ef3a2a28321738162b558ac43b397dba1b7130d99051a8107fafc9"
+    },
+    "linux-arm64": {
+      "url": "https://github.com/turmind/halo-hub/releases/download/voice-input-v1.1.0/voice-input-1.1.0-linux-arm64.zip",
+      "sha256": "c1407c100c76dee1cff6ea41003643593d971c41407416026cada5ac3b01af8f"
+    },
+    "darwin-arm64": {
+      "url": "https://github.com/turmind/halo-hub/releases/download/voice-input-v1.1.0/voice-input-1.1.0-darwin-arm64.zip",
+      "sha256": "133f4b78d8523f92fc929f3e03ae80a8eb2041d32b20e21b5ec4eb76869fd645"
+    },
+    "darwin-x64": {
+      "url": "https://github.com/turmind/halo-hub/releases/download/voice-input-v1.1.0/voice-input-1.1.0-darwin-x64.zip",
+      "sha256": "cc8b85f1c6e8b4a242f91d0efa52c2730b05ba813bc7c17e8952793344caf48e"
+    },
+    "win-x64": {
+      "url": "https://github.com/turmind/halo-hub/releases/download/voice-input-v1.1.0/voice-input-1.1.0-win-x64.zip",
+      "sha256": "28d6113ee1f2b62efcb48efba24772254ac0623c804fc2b09c777e0a03a0e636"
+    }
+  },
   "minHalo": "2.3.0"
 }

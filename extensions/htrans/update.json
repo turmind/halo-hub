@@ -1,7 +1,29 @@
 {
   "id": "htrans",
-  "version": "1.0.10",
-  "url": "https://github.com/turmind/halo-hub/releases/download/htrans-v1.0.10/htrans-1.0.10.zip",
-  "sha256": "064caf2b2895029355a935df990c73dc078907e275acb31f5274b7ac6d4c67ae",
+  "version": "1.1.0",
+  "url": "https://github.com/turmind/halo-hub/releases/download/htrans-v1.1.0/htrans-1.1.0-linux-x64.zip",
+  "sha256": "d54c000c601be7d8c545ab4d379c28f0a8ddd4464f5aa533d1cae3d4c4bd868e",
+  "packages": {
+    "linux-x64": {
+      "url": "https://github.com/turmind/halo-hub/releases/download/htrans-v1.1.0/htrans-1.1.0-linux-x64.zip",
+      "sha256": "d54c000c601be7d8c545ab4d379c28f0a8ddd4464f5aa533d1cae3d4c4bd868e"
+    },
+    "linux-arm64": {
+      "url": "https://github.com/turmind/halo-hub/releases/download/htrans-v1.1.0/htrans-1.1.0-linux-arm64.zip",
+      "sha256": "f15e6c36a23153d8ce3e4fd3fe7e2f1d80f970a413ebaf58b357fa9cd9cf4192"
+    },
+    "darwin-arm64": {
+      "url": "https://github.com/turmind/halo-hub/releases/download/htrans-v1.1.0/htrans-1.1.0-darwin-arm64.zip",
+      "sha256": "549d118f6d32ee45261eb712395f1d694292d2aff2e95ab9110ae41fb2f314b5"
+    },
+    "darwin-x64": {
+      "url": "https://github.com/turmind/halo-hub/releases/download/htrans-v1.1.0/htrans-1.1.0-darwin-x64.zip",
+      "sha256": "ded78e5db7f73f9a25ee1642ec7217cd3928d53ffa1f432308c8ca5e153bdc8c"
+    },
+    "win-x64": {
+      "url": "https://github.com/turmind/halo-hub/releases/download/htrans-v1.1.0/htrans-1.1.0-win-x64.zip",
+      "sha256": "44c077d0f4fb1a4c37d8fba25bfaecfbc7ceea208b508690473f2b16582a419e"
+    }
+  },
   "minHalo": "2.3.0"
 }
