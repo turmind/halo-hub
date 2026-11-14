@@ -1,12 +1,12 @@
 id: gemini
 runtime: gemini
-revision: 2026101201
+revision: 2026111401
 displayName: Google Gemini
 displayName_zh: Google Gemini
-description: Google Gemini 3.x via the Gemini API's OpenAI-compatible chat completions surface
-description_zh: Google Gemini 3.x，通过 Gemini API 的 OpenAI 兼容 chat completions 接口调用
+description: Google Gemini 4 Hydrogen and Gemini 3.x via the Gemini API's OpenAI-compatible chat completions surface
+description_zh: Google Gemini 4 Hydrogen 与 Gemini 3.x，通过 Gemini API 的 OpenAI 兼容 chat completions 接口调用
 defaultEndpoint: https://generativelanguage.googleapis.com/v1beta/openai
-defaultModelId: gemini-3.8-flash
+defaultModelId: gemini-4-hydrogen
 
 secrets:
   - key: api_key
@@ -37,10 +37,49 @@ secrets:
 # prompt_tokens_details.cached_tokens 6121 on run 2 (3.5-flash-lite). The 5m
 # preset is a form hint only — nothing is sent.
 #
+# 2026-11-14 census: Gemini 4 (Hydrogen GA 2026-11-12, Carbon GA 2026-11-10,
+# Argon) is on ai.google.dev/gemini-api/docs/models and the changelog. Only
+# gemini-4-hydrogen is shipped: carbon / argon 429 with free-tier quota
+# `limit: 0` on this key, so they can't be probed — add after a probe by
+# someone with a paid key. Hydrogen thinking levels low / medium / high /
+# xhigh (doc: /docs/thinking table; default high; `minimal` 400s, live).
+#
 # Not shipped: gemini-3.1-pro-preview — this key is free-tier and every call
 # 429s with quota limit 0, so the tool round-trip couldn't be probed. Aliases
 # (*-latest), image / tts / live / gemma / deep-research models are left out.
 models:
+  # Official docs (/docs/models/gemini-4-hydrogen): 1,048,576 context, max
+  # output 65,536 (default synchronous; up to 1,048,576 only with long decode —
+  # not wired, so 65,536). Live probe 2026-11-14: plain OK; reasoning_effort
+  # low / medium / high / xhigh 200, minimal 400 ("Thinking level MINIMAL is not
+  # supported"); "none" accepted but thinking is on by default per doc; 64×64
+  # red PNG → "Red"; no-arg tool → finish_reason tool_calls; implicit cache
+  # turn 2 cached_tokens 2993 of 5042 (explicit caching unsupported per doc).
+  # max_tokens 65537 isn't rejected (proves nothing; 65536 call hit a 429).
+  - id: gemini-4-hydrogen
+    displayName: Gemini 4 Hydrogen
+    maxOutputTokens: 65536
+    contextWindow: 272000
+    maxContextWindow: 1048576
+    compressAt: 0.9
+    capabilities:
+      image: true
+      video: false
+      audio: false
+      promptCaching:
+        default: 5m
+        ttlPresets:
+          - { value: 5m, label: 5min }
+      thinking:
+        # Always on server-side; the doc's default level is high.
+        defaultEnabled: true
+        default: xhigh
+        effortPresets:
+          - { value: low, label: Low }
+          - { value: medium, label: Medium }
+          - { value: high, label: High }
+          - { value: xhigh, label: XHigh }
+
   # Tool round-trip OK (signature replayed → 200; without it → 400).
   # reasoning_effort low / medium / high 200, minimal 400.
   - id: gemini-3.8-flash

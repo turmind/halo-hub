@@ -1,12 +1,12 @@
 id: hunyuan
 runtime: hunyuan
-revision: 2026101101
+revision: 2026111401
 displayName: Hunyuan (Tencent)
 displayName_zh: 混元（腾讯）
-description: Tencent Hunyuan Hy4 preview / Hy3 on TokenHub — agent-oriented MoE with no_think / think_low / think_high modes
-description_zh: 腾讯混元 Hy4 preview / Hy3（TokenHub），面向 Agent 的 MoE 模型，支持 no_think / think_low / think_high 三档思考
+description: Tencent Hunyuan Hy4 / Hy3 on TokenHub — agent-oriented MoE with no_think / think_low / think_high modes
+description_zh: 腾讯混元 Hy4 / Hy3（TokenHub），面向 Agent 的 MoE 模型，支持 no_think / think_low / think_high 三档思考
 defaultEndpoint: https://tokenhub.tencentmaas.com/v1
-defaultModelId: hy3
+defaultModelId: hy4
 
 secrets:
   - key: api_key
@@ -50,7 +50,41 @@ secrets:
 # 65536 / 131072. hy3-preview is not on that page → stays at 16384. (One
 # long-output run on hy3 with max_tokens 200000 stopped at 147,389 completion
 # tokens, finish_reason length — above the doc figure; the doc value is used.)
+# 2026-11-14 census: `hy4` (GA) is on the TokenHub model list
+# (cloud.tencent.com/document/product/1823/130051, updated 2026-11-13: 1M /
+# 960k / 64k, 深度思考 / Function Calling / Cache / 图片理解) and `online` in
+# GET /v1/models. Live probe: plain, reasoning_effort none (0 reasoning
+# tokens) / low / medium / high / xhigh 200 — the reasoning-token count does not
+# scale with effort, so only low / high are offered as for hy3; tool call →
+# tool_calls; automatic cache turn 2 cached_tokens 4928 of 5030; max_tokens
+# 65537 and 200000 are accepted (proves nothing). Image: the doc claims 图片理解
+# but a red 64×64 PNG answered "Red" only 3 of 4 runs at effort none / high
+# (Blue / Green otherwise) — not reliable, keep image:false until it is.
+# hy4-preview now reports `pre-offline` in /v1/models; no shutdown date is
+# published (deprecation page cloud.tencent.com/document/product/1729/131925
+# doesn't list it), so it only moves to the tail.
 models:
+  - id: hy4
+    displayName: Hunyuan Hy4
+    maxOutputTokens: 65536
+    contextWindow: 272000
+    maxContextWindow: 1048576
+    compressAt: 0.9
+    capabilities:
+      image: false
+      video: false
+      audio: false
+      promptCaching:
+        default: 5m
+        ttlPresets:
+          - { value: 5m, label: 5min }
+      thinking:
+        defaultEnabled: true
+        default: high
+        effortPresets:
+          - { value: low, label: Low }
+          - { value: high, label: High }
+
   - id: hy3
     displayName: Hunyuan Hy3
     maxOutputTokens: 131072
@@ -79,11 +113,12 @@ models:
           - { value: low, label: Low }
           - { value: high, label: High }
 
-  - id: hy4-preview
-    displayName: Hunyuan Hy4 Preview
-    maxOutputTokens: 65536
-    contextWindow: 272000
-    maxContextWindow: 1048576
+  # --- superseded by hy3 (GA); dropped from /v1/models, no retirement date published ---
+  - id: hy3-preview
+    displayName: Hunyuan Hy3 Preview
+    maxOutputTokens: 16384
+    contextWindow: 262144
+    maxContextWindow: 262144
     compressAt: 0.9
     capabilities:
       image: false
@@ -100,12 +135,12 @@ models:
           - { value: low, label: Low }
           - { value: high, label: High }
 
-  # --- superseded by hy3 (GA); dropped from /v1/models, no retirement date published ---
-  - id: hy3-preview
-    displayName: Hunyuan Hy3 Preview
-    maxOutputTokens: 16384
-    contextWindow: 262144
-    maxContextWindow: 262144
+  # --- superseded by hy4 (GA); `pre-offline` in /v1/models, no retirement date published ---
+  - id: hy4-preview
+    displayName: Hunyuan Hy4 Preview
+    maxOutputTokens: 65536
+    contextWindow: 272000
+    maxContextWindow: 1048576
     compressAt: 0.9
     capabilities:
       image: false
