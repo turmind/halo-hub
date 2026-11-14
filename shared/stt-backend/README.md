@@ -23,3 +23,13 @@ node scripts/pack.mjs extensions/voice-input --platforms           # all five pl
 | Models | `$HALO_EXT_DATA_DIR/models/` (`~/.halo/global/extension-data/<id>/models/`, kept across updates), ~271 MB, fetched from Hugging Face with a ModelScope fallback, resumed from `.part`, sha256-verified. The download starts when Halo first starts the backend (right after the admin confirms it) and on every stream while incomplete; while it runs with no stream open the backend tells Halo `busy` so the idle stop waits |
 | Writes | only `$HALO_EXT_DATA_DIR/models/` (`<name>.part`, then a rename). No audio, no text, no logs of recognized text. Under Halo's Linux write isolation (bwrap) that dir and a private /tmp are the only writable paths, which is all it needs |
 | Each extension | its own data dir, so voice-input and htrans each download the model set once (~271 MB each on disk) |
+
+Tests (no network, no native addon, no model files — engine and downloader are stubbed or pointed at a local server):
+
+```bash
+cd shared/stt-backend && npm ci && npm test && npm run typecheck
+```
+
+`test/stream.test.ts` covers the `/stream` frames, `engine` / `models` / `speakers` the ported units, and `main.test.ts`
+the process contract with Halo (IPC `ready` / `busy`, 1001 on SIGTERM). The admin-cookie check and the extension lookup
+are Halo's proxy's, tested in halo-agent `packages/server/test/extension-backend.test.ts`.

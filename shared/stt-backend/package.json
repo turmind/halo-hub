@@ -1,16 +1,21 @@
 {
   "name": "halo-hub-stt-backend",
   "private": true,
-  "description": "On-device speech backend (SenseVoice + Silero VAD + speaker labels via sherpa-onnx) built into voice-input and htrans by build.sh \u2014 one copy per extension, no shared install.",
+  "description": "On-device speech backend (SenseVoice + Silero VAD + speaker labels via sherpa-onnx) built into voice-input and htrans by build.sh — one copy per extension, no shared install.",
   "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
   "dependencies": {
     "sherpa-onnx-node": "1.13.8",
     "ws": "8.21.3"
   },
   "devDependencies": {
-    "esbuild": "0.28.2",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.0",
-    "typescript": "^5.7.0"
+    "esbuild": "0.28.2",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.12"
   }
 }
