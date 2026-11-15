@@ -40,12 +40,14 @@
         '快速存档（F2 / F4）保存在这个 .mega 目录的 saves/ 里，跟着工作区走；游戏内的电池存档仍只在本浏览器里。',
         'ROM 不会复制进这个目录，game.json 只记下它的位置（在工作区里记相对位置，在工作区外记绝对路径）；ROM 挪了地方就点「换一个 ROM」重新选。',
         '在 Halo 里放大画布时，Esc 用于退出放大。',
+        'iPhone 没有网页全屏：点「⛶ 全屏」后画面铺满页面（新版 Halo 会隐藏自己的标题栏和底部导航，铺满整屏；旧版 Halo 里先放大画布），再点 ⛶、双击画面、点 ✕ 或按 Esc 退出。竖着拿手机时顶部会提示横过来玩。',
         '触屏设备上：左半屏任意位置按下就出现摇杆（八个方向），右边是动作按钮；用了键盘或手柄就自动隐藏，再摸一下屏幕又会出现。工具栏「虚拟手柄」可切换 自动 / 开 / 关。',
         '蓝牙手柄连上后要先按一下任意键，浏览器才会识别。',
         '双人：工具栏点「👥 双人」打开（会记住）。只有一个手柄时，键盘是 1P、手柄是 2P；有两个手柄时，第一个是 1P、第二个是 2P，键盘也还是 1P。每个手柄的 Start / Select 只管自己那一方，哪个手柄按 LB 都是暂停；触屏始终是 1P。',
       ],
       lic: 'EmulatorJS 4.2.3（GPL-3.0）+ Genesis Plus GX（仅限非商业用途）· 不含任何游戏 ROM',
       vStart: '开始', vCoin: '投币', vPause: '暂停',
+      rotate: '↻ 横过来玩更舒服　✕', exitFull: '退出全屏',
     },
     en: {
       help: '⌨ Keys', pause: '⏸ Pause', resume: '▶ Resume', save: '💾 Save', load: '📂 Load', full: '⛶ Fullscreen', pick: '📁 Change ROM',
@@ -70,12 +72,14 @@
         'Quick saves (F2 / F4) go to saves/ inside this .mega folder and travel with the workspace; in-game battery saves stay in this browser.',
         'The ROM is never copied into this folder — game.json only stores where it is (relative to this folder inside the workspace, an absolute path outside it). If you move the ROM, pick it again with “Change ROM”.',
         'When the Halo canvas is maximized, Esc exits the maximized view.',
+        'iPhone has no fullscreen for web pages: “⛶ Fullscreen” makes the game cover the page instead (a newer Halo hides its title bar and bottom navigation for the whole screen; in an older one, maximize the canvas first). ⛶ again, a double-click, ✕ or Esc leave it. Held upright, a hint at the top suggests turning the phone.',
         'Touch screens: press anywhere in the left half for a stick (8 directions); the action buttons are on the right. They hide when you use a keyboard or gamepad and come back on the next touch. The “Touch controls” toolbar button cycles Auto / On / Off.',
         'A Bluetooth gamepad shows up only after you press one of its buttons.',
         'Two players: turn on “👥 2 Players” in the toolbar (remembered). With one gamepad the keyboard is 1P and the pad is 2P; with two gamepads the first is 1P and the second 2P, and the keyboard stays 1P. Each pad’s Start / Select works for its own player, LB on either pad pauses; touch is always 1P.',
       ],
       lic: 'EmulatorJS 4.2.3 (GPL-3.0) + Genesis Plus GX (non-commercial use only) · no game ROMs included',
       vStart: 'Start', vCoin: 'Coin', vPause: 'Pause',
+      rotate: '↻ Rotate for a better view  ✕', exitFull: 'Exit fullscreen',
     },
   };
   let lang = 'zh';
@@ -319,7 +323,13 @@
 
   // ── keyboard ──────────────────────────────────────────────────────────
   function onKey(e) {
-    if (e.ctrlKey || e.metaKey || e.altKey || e.code === 'Escape') return; // Esc stays with the host / browser
+    // Esc leaves our pseudo-fullscreen first, and only that (the host's maximize keeps it); otherwise it stays with the
+    // host / browser
+    if (e.code === 'Escape' && pseudoFull) {
+      if (e.type === 'keydown') { e.preventDefault(); e.stopImmediatePropagation(); setPseudoFull(false); }
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey || e.code === 'Escape') return;
     const down = e.type === 'keydown';
     if (!started) {
       if (down && !booting && !$('start').hidden && (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space')) { e.preventDefault(); boot(); }
@@ -513,10 +523,54 @@
   function toggleMute() { audio.muted = !audio.muted; applyAudio(); }
   $('bMute').addEventListener('click', toggleMute);
   $('vol').addEventListener('input', () => { audio.volume = Number($('vol').value); audio.muted = false; applyAudio(); });
-  function toggleFull() {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else $('stage').requestFullscreen?.().catch(() => {});
+  // Fullscreen: the Fullscreen API where the browser has it on elements (desktop, Android; iPad Safari only prefixed).
+  // iPhone Safari has neither, so there — or when the browser refuses — the stage covers the iframe instead
+  // (#stage.pseudo-full), and a host that offered `immersive` in init is asked to give the iframe the whole screen.
+  let hostImmersive = false; // init.immersive: this host takes {type:'immersive'} frames
+  let hostOn = false;        // the host's last reported immersive state
+  let askedHost = false;     // we turned the host's immersive on, so leaving pseudo-fullscreen turns it off again
+  let pseudoFull = false;
+  let rotateOff = false;     // the rotate hint was dismissed for this fullscreen
+  const portrait = matchMedia('(orientation: portrait)');
+  const fsElement = () => document.fullscreenElement ?? document.webkitFullscreenElement ?? null;
+  function setPseudoFull(on) {
+    if (pseudoFull === on) return;
+    pseudoFull = on;
+    $('stage').classList.toggle('pseudo-full', on);
+    if (on && hostImmersive && !hostOn) { askedHost = true; post({ type: 'immersive', on: true }); }
+    if (!on && askedHost) { askedHost = false; post({ type: 'immersive', on: false }); }
+    renderFull();
   }
+  function toggleFull() {
+    if (pseudoFull) return setPseudoFull(false);
+    if (fsElement()) return void (document.exitFullscreen ?? document.webkitExitFullscreen).call(document);
+    const st = $('stage'), req = st.requestFullscreen ?? st.webkitRequestFullscreen;
+    rotateOff = false;
+    if (!req) return setPseudoFull(true);
+    // a refused request falls back too; the prefixed call returns nothing on older Safari and reports through
+    // webkitfullscreenerror instead
+    Promise.resolve(req.call(st)).then(lockLandscape, fullRefused);
+  }
+  function fullRefused() { if (!fsElement()) setPseudoFull(true); }
+  // Android Chrome can hold landscape while fullscreen; iOS has no lock and desktops refuse — swallowed either way.
+  // (window.screen: a bare `screen` is this file's current-page state.)
+  function lockLandscape() {
+    if (touchCapable) window.screen.orientation?.lock?.('landscape')?.catch(() => {});
+  }
+  function renderFull() {
+    const full = pseudoFull || fsElement() === $('stage');
+    $('rotate').textContent = t('rotate');
+    $('rotate').hidden = !(full && touchCapable && portrait.matches && !rotateOff);
+    $('bExitFull').hidden = !(pseudoFull && !hostOn); // a host in immersive shows its own exit control
+    $('bExitFull').setAttribute('aria-label', t('exitFull'));
+  }
+  portrait.addEventListener('change', renderFull);
+  document.addEventListener('fullscreenchange', renderFull);
+  document.addEventListener('webkitfullscreenchange', renderFull);
+  document.addEventListener('fullscreenerror', fullRefused);
+  document.addEventListener('webkitfullscreenerror', fullRefused);
+  $('rotate').addEventListener('click', () => { rotateOff = true; renderFull(); });
+  $('bExitFull').addEventListener('click', () => setPseudoFull(false));
   $('bFull').addEventListener('click', toggleFull);
   $('game').addEventListener('dblclick', toggleFull);
   $('bPause').addEventListener('click', togglePause);
@@ -579,7 +633,7 @@
     $('missingText').textContent = t('missingText', game.rom ?? '');
     $('readError').hidden = !readError;
     $('readError').textContent = readError ? t('readFail', readError) : '';
-    renderPause(); renderChip(); renderTouch(); renderHelp(); relabelTouch(); renderShader();
+    renderPause(); renderChip(); renderTouch(); renderHelp(); relabelTouch(); renderShader(); renderFull();
     if (screen === 'notrom') renderEntries();
   }
   function renderEntries() {
@@ -667,11 +721,20 @@
       if (m.ok) p.resolve(m); else p.reject(Object.assign(new Error(m.error), { code: m.code }));
     } else if (m.type === 'init') {
       file = m.file; lang = m.lang === 'en' ? 'en' : 'zh';
+      hostImmersive = m.immersive === true;
       applyTheme(m);
       $('bPick').disabled = false;
       prepare();
     } else if (m.type === 'theme') applyTheme(m);
     else if (m.type === 'lang') { lang = m.lang === 'en' ? 'en' : 'zh'; renderTexts(); }
+    else if (m.type === 'immersive') {
+      const was = hostOn;
+      hostOn = m.on === true;
+      // the host left immersive (its own exit control, or our on:false): pseudo-fullscreen ends with it. An on:false
+      // while it was off already (a host declining the request) keeps the in-iframe cover.
+      if (!hostOn) { askedHost = false; if (was) setPseudoFull(false); }
+      renderFull();
+    }
   });
   applyAudio(); show('busy');
   requestAnimationFrame(padLoop);

@@ -35,7 +35,24 @@ body { background: var(--h-background); color: var(--h-foreground); font: 13px/1
 /* ── stage ── */
 #stage { position: relative; flex: 1; min-height: 0; background: #000; outline: none; }
 #stage:fullscreen { width: 100vw; height: 100vh; }
+#stage:-webkit-full-screen { width: 100vw; height: 100vh; }
 #game { position: absolute; inset: 0; }
+/* pseudo-fullscreen (no element Fullscreen API — iPhone Safari): the stage covers the iframe (all of the screen when the
+   host went immersive). The picture and the controls keep clear of the notch, rounded corners and home bar: #game and
+   the stick are inset by the safe area, so everything inside them follows. */
+#stage.pseudo-full { position: fixed; inset: 0; z-index: 40; height: 100vh; height: 100dvh;
+  --sat: env(safe-area-inset-top, 0px); --sar: env(safe-area-inset-right, 0px); --sab: env(safe-area-inset-bottom, 0px); --sal: env(safe-area-inset-left, 0px); }
+#stage.pseudo-full #game { inset: var(--sat) var(--sar) var(--sab) var(--sal); width: auto; height: auto; } /* EmulatorJS's .ejs_parent is 100% × 100% */
+#stage.pseudo-full .stick { top: calc(56px + var(--sat)); left: var(--sal); bottom: var(--sab); width: calc(50% - var(--sal)); }
+/* already inset with #game / .stick: drop the plain safe-area terms below so they don't count twice */
+#stage.pseudo-full .ejs_virtualGamepad_right { right: 14px !important; }
+#stage.pseudo-full .stick-base { left: 84px; }
+#stage.pseudo-full .panel { padding: calc(16px + var(--sat)) calc(16px + var(--sar)) calc(16px + var(--sab)) calc(16px + var(--sal)); }
+#stage.pseudo-full .toast { bottom: calc(16px + var(--sab)); }
+.exit-full { position: absolute; top: calc(10px + var(--sat, 0px)); right: calc(10px + var(--sar, 0px)); z-index: 35; width: 32px; height: 32px; padding: 0; border-radius: 50%; border: 1px solid rgba(255,255,255,.6); background: rgba(0,0,0,.55); color: #fff; font: 14px/30px system-ui, sans-serif; opacity: .7; cursor: pointer; }
+/* "rotate" hint: top centre, inside the top band the touch controls leave free, clear of the corners the host's and our
+   exit controls use; tap to dismiss, gone in landscape */
+.rotate { position: absolute; top: calc(12px + var(--sat, 0px)); left: 50%; transform: translateX(-50%); z-index: 35; max-width: calc(100% - 120px); padding: 4px 12px; border: 0; border-radius: 99px; background: rgba(0,0,0,.7); color: #fff; font: 12px/1.5 system-ui, -apple-system, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
 /* the host owns the iframe's corners: no EmulatorJS menu toggle, and status messages go bottom-centre, not top */
 .ejs_virtualGamepad_open, .ejs_menu_bar { display: none !important; }
 .ejs_message { top: auto !important; bottom: 12px; left: 50%; transform: translateX(-50%); color: #fff !important; background: rgba(0,0,0,.6); border-radius: 6px; padding: 4px 10px !important; font-size: 13px !important; pointer-events: none; }
@@ -97,6 +114,15 @@ th { color: var(--h-muted-foreground); font-weight: 600; }
 @media (max-height: 420px) {
   .ejs_virtualGamepad_right { transform: scale(.88); transform-origin: bottom right; bottom: 10px !important; }
 }
+/* narrow (phone portrait): the centred coin · start · pause row runs into the 2×3 grid below ~626 px and into the
+   stick's resting spot below ~468 px — both move up above the row; under 380 px the grid shrinks to stay clear of the
+   stick's resting spot */
+@media (max-width: 640px) {
+  .ejs_virtualGamepad_right { bottom: 56px !important; }
+}
+@media (max-width: 380px) {
+  .ejs_virtualGamepad_right { transform: scale(.8); transform-origin: bottom right; }
+}
 
 /* ── floating stick: the left half of the game area below the top 56 px. A touch centres the base under the finger;
    released, it glides back to its resting hint bottom-left. Under the EmulatorJS buttons (z 10), so coin / start /
@@ -106,4 +132,5 @@ th { color: var(--h-muted-foreground); font-weight: 600; }
 .stick-base { position: absolute; left: max(84px, calc(env(safe-area-inset-left) + 70px)); top: calc(100% - 84px); width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 2px solid #fff; background: rgba(0,0,0,.55); opacity: .4; pointer-events: none; transition: left .25s ease, top .25s ease; }
 .stick.active .stick-base { transition: none; }
 .stick-knob { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; background: rgba(255,255,255,.7); border: 2px solid #fff; }
-@media (max-height: 420px) { .stick-base { left: max(70px, calc(env(safe-area-inset-left) + 60px)); top: calc(100% - 70px); } }
+@media (max-height: 420px) { .stick-base { left: max(70px, calc(env(safe-area-inset-left) + 60px)); top: calc(100% - 70px); } #stage.pseudo-full .stick-base { left: 70px; } }
+@media (max-width: 640px) { .stick-base { top: calc(100% - 124px); } }

@@ -38,7 +38,8 @@ How the keys reach the core (libretro RetroPad ids, Genesis Plus GX's pad mappin
 - **Pause**: P / pad LB / toolbar. The game also pauses when the iframe loses focus (typing in the Halo chat, another window) and resumes when it gets focus back; a pause you made yourself stays until you resume it.
 - **Saves**: F2 / F4 (or the toolbar) keep one quick-save state per ROM in the bundle, `saves/<ROM file name without extension>.state` — it travels with the workspace. In-game battery saves (SRAM) stay in this browser. Switching editor tabs unmounts the game, so save first.
 - **Display** (「画面」): *Pixel* (no filter), *Soft* (bicubic), *HD* (SABR edge smoothing), *CRT* (default; a light crt-easymode — scanlines + mask, no curvature). CRT is the default for a new bundle and for a `game.json` without `shader`; a shader `game.json` already names is kept. Stock easymode is dark and its RGB mask fringes small text on phones, so its own parameters are set lighter in the preset: `SCANLINE_STRENGTH` 0.6 (stock 1.0), `SCANLINE_BRIGHT_MIN` 0.5 (0.35), `MASK_STRENGTH` 0.15 (0.3). Applied live and stored in `game.json`. Picked for speed on WebGL 1: all four hold 60 fps on a software renderer at desktop and phone sizes, where crt-geom / crt-aperture / crt-lottes fell to 41 / 47 / 13 fps and were left out.
-- **Esc** is not bound — in a maximized Halo canvas Esc exits the maximized view.
+- **Esc** is not bound to the game — in a maximized Halo canvas Esc exits the maximized view; in the page's own fullscreen (below) it leaves that first.
+- **Fullscreen** (⛶ / double-click): the browser's Fullscreen API on the game area where it exists (desktop, Android; `webkitRequestFullscreen` on iPad). **iPhone Safari** has no element fullscreen, so there — or when the browser refuses — the game area covers the whole page instead, inset by the safe areas so the picture and the touch controls stay clear of the notch, rounded corners and home bar. A Halo host that offers it (`init.immersive`, newer than 2.3.2) is asked to give the page the whole screen, hiding its own title / tab bars and bottom navigation, and shows its exit control top-left; an older host keeps the game inside the canvas pane, with a ✕ top-right — maximize the canvas first for a full-screen picture. ⛶, double-click, ✕ or Esc leave it. On a phone held upright a dismissable hint, 「横过来玩更舒服」 / *Rotate for a better view*, sits at the top until you turn it; Android also locks landscape while fullscreen (iOS can't).
 - **Touch controls**: a **floating stick** on the left — touch anywhere in the left half of the game (below the top 56 px) and the stick centres under your finger; 8 directions with a deadzone, the knob clamps at the rim, and on release it fades back to a resting spot bottom-left. Buttons are EmulatorJS's on-screen ones, restyled: 2×3 grid bottom-right labelled X Y Z / A B C, coin · start · pause bottom-centre. All ~40% opaque, nothing in the top 56 px (the host's controls). The stick follows only the touch that started it, so it and several buttons work at once. *Auto* (default) shows the controls on touch screens until a keyboard key or a gamepad is used, and brings them back on the next touch; the toolbar button cycles **Auto / On / Off** (remembered per browser).
 - **Gamepads** need a secure context (HTTPS or localhost); a Bluetooth pad shows up after its first button press. The toolbar chip shows the connected pad.
 - **Two players** (local, same screen): the toolbar's **👥 2 Players** / 「👥 双人」 (off by default, remembered per browser). With one gamepad the keyboard plays 1P and the pad 2P; with two gamepads the first (in the browser's pad order) is 1P and the second 2P, and the keyboard still drives 1P; a third pad is ignored. Touch is always 1P. Each pad's Start and Select go to its own player, LB on either pad pauses; buttons are mapped as in the table above. Plugging, unplugging or toggling releases every held input, so nothing stays pressed. The chip shows who plays on what, e.g. `1P ⌨ Keyboard · 2P 🎮 <pad>`. Off, everything drives 1P as before. Not on one shared keyboard, no netplay.
@@ -46,14 +47,14 @@ How the keys reach the core (libretro RetroPad ids, Genesis Plus GX's pad mappin
 ## Install
 
 - Agent: `/extension install megadrive`
-- Admin → Extensions → upload `megadrive-2.1.0.zip` (from the GitHub release, ~1.5 MB)
+- Admin → Extensions → upload `megadrive-2.2.0.zip` (from the GitHub release, ~1.5 MB)
 - Manual: `./fetch-deps.sh && cp -r extensions/megadrive ~/.halo/global/extensions/`
 
 ## Package
 
 ```bash
 extensions/megadrive/fetch-deps.sh          # npm EmulatorJS + Genesis Plus GX core (sha256-checked) → emulatorjs/ (~2 MB)
-node scripts/pack.mjs extensions/megadrive   # → dist/megadrive-2.1.0.zip
+node scripts/pack.mjs extensions/megadrive   # → dist/megadrive-2.2.0.zip
 ```
 
 `emulatorjs/` is gitignored and ships only inside the release zip. To upgrade, bump the versions + sha256 in `fetch-deps.sh` (and `NOTICE`), re-run, check that `emulatorjs-offline.patch` still applies, and re-test: pick a ROM (zip, 7z, bare), boot, the six buttons, gamepad, save / load into `saves/`, the stick + touch buttons, each display option, no network requests.
