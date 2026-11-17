@@ -671,10 +671,14 @@ CMD ["halo", "agentcore"]
 
 
 def halo_db_slots(tgz):
-    """halo.db schema version the packaged Halo stamps = its HALO_MIGRATIONS slot count (bundled dist/index.js)."""
+    """halo.db schema version the packaged Halo stamps = its HALO_MIGRATIONS slot count. Searched across dist/*.js:
+    the bundle is code-split, and since 2.2.x the array sits in a chunk, not in index.js."""
+    m = None
     with tarfile.open(tgz) as t:
-        js = t.extractfile("package/dist/index.js").read().decode("utf-8", "replace")
-    m = re.search(r"HALO_MIGRATIONS = \[\n(.*?)\n\s*\];", js, re.S)
+        for f in t.getmembers():
+            if m is None and re.fullmatch(r"package/dist/[^/]+\.js", f.name):
+                js = t.extractfile(f).read().decode("utf-8", "replace")
+                m = re.search(r"HALO_MIGRATIONS = \[\n(.*?)\n\s*\];", js, re.S)
     n = len(re.findall(r"^\s*\(s\) =>", m.group(1), re.M)) if m else 0
     if not n:
         die(f"can't read the halo.db schema version from {Path(tgz).name}")
