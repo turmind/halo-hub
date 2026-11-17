@@ -67,7 +67,7 @@ apt: [file]                      # scan 提示缺的 Debian 包
 iam:
   allow_actions: []              # scan 找到、确定要授予的额外 action
   ignore_actions: []             # scan 找到、有意不授予的 action
-halo_version: 2.0.2              # 或 halo_tgz: <本地 tgz 路径>
+halo_version: 2.3.5              # 或 halo_tgz: <本地 tgz 路径>
 builder: arm64builder
 ```
 

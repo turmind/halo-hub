@@ -64,7 +64,7 @@ EFS_BOX_TAG = "halo-agentcore-efs-utils:1"  # built once on the sync host from E
 EFS_BOX_ROOT = "/efs"  # the access point's root dir inside the box
 SG_WAIT = 900  # destroy: seconds to wait for a SG's ENIs (AgentCore's linger long after the runtime) before giving up
 TMP_GC_AGE = 3600  # gc: seconds after which a front's .tmp-* template copy is abandoned (a copy takes seconds)
-HALO_VERSION = "2.0.2"  # image's npm @turmind/halo when the config sets neither halo_version nor halo_tgz — pinned, so builds reproduce
+HALO_VERSION = "2.3.5"  # image's npm @turmind/halo when the config sets neither halo_version nor halo_tgz — pinned, so builds reproduce
 
 
 def log(msg):

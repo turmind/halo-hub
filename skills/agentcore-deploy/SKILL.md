@@ -76,7 +76,7 @@ iam:
   allow_actions: []              # extra actions the scan found that the user wants granted
   ignore_actions: []             # found but deliberately not granted
 agent_card: ~/agentcore-jobs/coach.agent-card.json   # a2a only, optional
-halo_version: 2.0.2              # or halo_tgz: <path to a packed tgz>
+halo_version: 2.3.5              # or halo_tgz: <path to a packed tgz>
 builder: arm64builder            # docker buildx builder
 ```
 
