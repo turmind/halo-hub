@@ -1,10 +1,10 @@
 id: hunyuan
 runtime: hunyuan
-revision: 2026111401
+revision: 2026111801
 displayName: Hunyuan (Tencent)
 displayName_zh: 混元（腾讯）
-description: Tencent Hunyuan Hy4 / Hy3 on TokenHub — agent-oriented MoE with no_think / think_low / think_high modes
-description_zh: 腾讯混元 Hy4 / Hy3（TokenHub），面向 Agent 的 MoE 模型，支持 no_think / think_low / think_high 三档思考
+description: Tencent Hunyuan Hy4 / Hy4 Flash / Hy3 on TokenHub — agent-oriented MoE with no_think / think_low / think_high modes
+description_zh: 腾讯混元 Hy4 / Hy4 Flash / Hy3（TokenHub），面向 Agent 的 MoE 模型，支持 no_think / think_low / think_high 三档思考
 defaultEndpoint: https://tokenhub.tencentmaas.com/v1
 defaultModelId: hy4
 
@@ -63,6 +63,15 @@ secrets:
 # hy4-preview now reports `pre-offline` in /v1/models; no shutdown date is
 # published (deprecation page cloud.tencent.com/document/product/1729/131925
 # doesn't list it), so it only moves to the tail.
+# 2026-11-18 census: `hy4-flash` is on the TokenHub model list
+# (cloud.tencent.com/document/product/1823/130051: 1M / 960k / 64k, 深度思考 /
+# Function Calling / Cache / 图片理解) and `online` in GET /v1/models. Live
+# probe: plain; reasoning_effort none (0 reasoning tokens) / low / high 200
+# (medium / xhigh also 200); red 64×64 PNG → "Red" on 6 of 6 runs at none / low /
+# high (unlike hy4, so image:true); no-arg tool → tool_calls; automatic cache
+# turn 2 cached_tokens 4864; max_tokens 65537 accepted (proves nothing, 64k is
+# the doc figure). The same model list now marks hy4-preview "2026-12-07下线"
+# → tagged deprecated below.
 models:
   - id: hy4
     displayName: Hunyuan Hy4
@@ -72,6 +81,27 @@ models:
     compressAt: 0.9
     capabilities:
       image: false
+      video: false
+      audio: false
+      promptCaching:
+        default: 5m
+        ttlPresets:
+          - { value: 5m, label: 5min }
+      thinking:
+        defaultEnabled: true
+        default: high
+        effortPresets:
+          - { value: low, label: Low }
+          - { value: high, label: High }
+
+  - id: hy4-flash
+    displayName: Hunyuan Hy4 Flash
+    maxOutputTokens: 65536
+    contextWindow: 272000
+    maxContextWindow: 1048576
+    compressAt: 0.9
+    capabilities:
+      image: true
       video: false
       audio: false
       promptCaching:
@@ -135,9 +165,9 @@ models:
           - { value: low, label: Low }
           - { value: high, label: High }
 
-  # --- superseded by hy4 (GA); `pre-offline` in /v1/models, no retirement date published ---
+  # --- deprecated: retires 2026-12-07 (https://cloud.tencent.com/document/product/1823/130051) — remove after cutoff ---
   - id: hy4-preview
-    displayName: Hunyuan Hy4 Preview
+    displayName: Hunyuan Hy4 Preview (deprecated 2026-12-07)
     maxOutputTokens: 65536
     contextWindow: 272000
     maxContextWindow: 1048576
