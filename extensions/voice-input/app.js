@@ -213,7 +213,10 @@ async function start() {
     // Before the first grant the list has no ids, so fall back to the remembered one; `ideal` = a device that's gone
     // falls back to the default instead of failing.
     const id = $('mic').value || localStorage.getItem(`${LS}mic`) || '';
-    r.stream = await navigator.mediaDevices.getUserMedia({ audio: { ...(id ? { deviceId: { ideal: id } } : {}), echoCancellation: true, noiseSuppression: true } });
+    // 'all' (Chrome 141+ EchoCancellationModeEnum) asks the browser to also cancel other apps' playout, so their music isn't
+    // transcribed; `true` only covers remote WebRTC audio. Engines without the enum read the string as `true`.
+    r.stream = await navigator.mediaDevices.getUserMedia({ audio: { ...(id ? { deviceId: { ideal: id } } : {}), echoCancellation: 'all', noiseSuppression: true } });
+    console.info('[voice-input] echoCancellation =', r.stream.getAudioTracks()[0]?.getSettings().echoCancellation);
   } catch (e) {
     teardown(r);
     if (rec === r) toIdle(micError(e));
