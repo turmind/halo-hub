@@ -793,8 +793,11 @@ async function start() {
     else setNotice('sys', null);
     if (wantMic) {
       const id = $('mic').value;
-      try { micStream = await navigator.mediaDevices.getUserMedia({ audio: { ...(id ? { deviceId: { exact: id } } : {}), echoCancellation: true, noiseSuppression: true } }); }
+      // System sound is captured separately via getDisplayMedia, so 'all' (Chrome 141+: cancel all system playout, not just
+      // remote WebRTC audio) keeps the mic from picking the speaker output up a second time. Older engines read it as `true`.
+      try { micStream = await navigator.mediaDevices.getUserMedia({ audio: { ...(id ? { deviceId: { exact: id } } : {}), echoCancellation: 'all', noiseSuppression: true } }); }
       catch (e) { stopTracks(display); setNotice('start', () => t('micFailed', e.message || e.name)); setPhase(meeting.runs.length ? 'stopped' : 'idle'); return; }
+      console.info('[htrans] echoCancellation =', micStream.getAudioTracks()[0]?.getSettings().echoCancellation);
       refreshDevices(); // labels are available now
     }
     const hasAudio = !!micStream || sysTracks.length > 0;

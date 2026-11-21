@@ -1,7 +1,7 @@
 {
   "id": "htrans",
   "name": "Meeting Recorder",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Record a meeting (mic + system/video sound), live captions via Amazon Transcribe or on-device SenseVoice with speaker labels, timed screenshots; a .htrans folder for an agent.",
   "extensions": [".htrans"],
   "entry": "index.html",
