@@ -88,9 +88,9 @@ test('consent cancel, duplicate pending operation, source change, redacted OS ex
     let notified: () => void = () => {}
     const notice = new Promise<void>(resolve => { notified = resolve })
     const service = signinFactory(f.machine)(host(async () => { confirmations++; return new Promise(resolve => { finish = resolve; notified() }) }))
-    const one = service.import('example.com', undefined); const two = service.import('example.com', undefined); assert.equal(one, two)
+    const one = service.import('example.com', undefined); const two = service.import('example.com', undefined)
     await notice
-    finish('cancel'); assert.deepEqual(await one, { status: 'cancelled' }); assert.equal(confirmations, 1); await service.dispose()
+    finish('cancel'); assert.deepEqual(await one, { status: 'cancelled' }); assert.deepEqual(await two, await one); assert.equal(confirmations, 1); await service.dispose()
     const changed = signinFactory(f.machine)(host(async () => { const db = new DatabaseSync(source.file); db.exec("UPDATE cookies SET path='/changed'"); db.close(); return 'confirm' }))
     const result = await changed.import('example.com', undefined); assert.equal(result.status, 'unavailable'); assert.match('reason' in result ? result.reason : '', /changed/); assert.equal(JSON.stringify(result).includes(canary), false); await changed.dispose()
   } finally { await f.close() }

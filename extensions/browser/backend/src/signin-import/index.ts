@@ -6,7 +6,7 @@ import { readStore, fileFingerprint, type StoreRead } from './store-reader.js'
 import { siteScope, type SiteScope } from './site-scope.js'
 import { safariMetadata } from './safari.js'
 import { OsSecrets, runTool, type ToolRunner } from './os-secrets.js'
-import { installCookies } from './import-cookies.js'
+import { commitCookies } from './import-cookies.js'
 import { check, publicReason, reasons, SigninFault, type Machine, type Source, type SigninHost, type SigninService, type SigninSource, type SigninImportResult } from './types.js'
 
 interface Candidate { source: Source; dto: SigninSource; store?: StoreRead }
@@ -43,14 +43,9 @@ export function signinFactory(machine: Machine, run: ToolRunner = runTool): (hos
       for (const source of all) { check(signal); const item = await inspect(source, scope, signal); if (item.dto.count !== 0) result.push(item) }
       return { all, result }
     }
-    const importSource = async (site: string, from: string | undefined): Promise<SigninImportResult> => {
+    const importSource = async (scope: SiteScope, all: Source[], chosen: Candidate): Promise<SigninImportResult> => {
+      let committing = false
       try {
-        const scope = siteScope(site)
-        const { all, result } = await candidates(scope)
-        const matches = from ? result.filter(c => c.source.id === from) : result.filter(c => c.dto.available)
-        if (!matches.length) return { status: 'unavailable', reason: from ? result.find(c => c.source.id === from)?.dto.reason ?? reasons.missing : result.length === 1 ? result[0].dto.reason : reasons.missing }
-        if (matches.length !== 1) return { status: 'unavailable', reason: reasons.choose }
-        const chosen = matches[0]
         if (!chosen.dto.available || !chosen.store) return { status: 'unavailable', reason: chosen.dto.reason }
         const batch = machine.platform === 'darwin' ? [...new Set(all.filter(s => s.family === 'chromium' && !s.unavailable).map(s => s.account))].join(', ') : ''
         let stopWaiting: () => void = () => {}
@@ -75,30 +70,52 @@ export function signinFactory(machine: Machine, run: ToolRunner = runTool): (hos
           check(signal)
           if (store.fingerprint !== await fileFingerprint(current)) throw new SigninFault('changed')
           if (machine.platform === 'win32' && appBound(await jsonFile(join(current.root, 'Local State')))) throw new SigninFault('appBound')
-          const count = await host.withContext(async context => {
+          committing = true
+          const count = await commitCookies(host, cookies, signal, async () => {
             // The context can take time to launch; consent fingerprint must still hold at commit.
             if (store.fingerprint !== await fileFingerprint(current)) throw new SigninFault('changed')
-            return installCookies(context, cookies, signal)
           })
-          try { await host.checkpoint() } catch { throw new SigninFault('uncertain') }
           return { status: 'imported', count, from: { id: current.id, browser: current.browser, profile: current.profile } }
         } finally {
           for (const cookie of cookies) cookie.value = ''
           for (const row of store.rows) { row.encrypted?.fill(0); row.value = undefined }
         }
+      } catch (error) {
+        if (error instanceof SigninFault && error.reason === 'uncertain') return { status: 'unavailable', reason: reasons.uncertain }
+        if (committing ? error instanceof SigninFault && error.reason === 'cancelled' : signal.aborted) return { status: 'cancelled' }
+        return { status: 'unavailable', reason: publicReason(error) }
+      }
+    }
+    // Share source resolution too, but only the resolved source id keys an import/approval.
+    const resolutions = new Map<string, ReturnType<typeof candidates>>()
+    const requests = new Set<Promise<SigninImportResult>>()
+    const requestImport = async (site: string, from: string | undefined): Promise<SigninImportResult> => {
+      try {
+        const scope = siteScope(site)
+        const scopeKey = JSON.stringify([scope.host, scope.exact])
+        if (!resolutions.has(scopeKey)) resolutions.set(scopeKey, candidates(scope))
+        const { all, result } = await resolutions.get(scopeKey)!
+        const matches = from ? result.filter(c => c.source.id === from) : result.filter(c => c.dto.available)
+        if (!matches.length) return { status: 'unavailable', reason: from ? result.find(c => c.source.id === from)?.dto.reason ?? reasons.missing : result.length === 1 ? result[0].dto.reason : reasons.missing }
+        if (matches.length !== 1) return { status: 'unavailable', reason: reasons.choose }
+        const chosen = matches[0]
+        const key = JSON.stringify([scope.host, scope.exact, chosen.source.id])
+        if (!pending.has(key)) pending.set(key, importSource(scope, all, chosen))
+        return pending.get(key)!
       } catch (error) { return signal.aborted ? { status: 'cancelled' } : { status: 'unavailable', reason: publicReason(error) } }
     }
     return {
       async sources(site) { const { result } = await candidates(siteScope(site)); return result.map(c => c.dto) },
       import(site, from) {
-        const key = JSON.stringify([site, from])
-        if (!pending.has(key)) pending.set(key, importSource(site, from))
-        return pending.get(key)!
+        const task = requestImport(site, from)
+        requests.add(task)
+        void task.finally(() => requests.delete(task))
+        return task
       },
       async dispose() {
         controller.abort(); host.signal.removeEventListener('abort', abort)
-        await Promise.allSettled(pending.values())
-        secrets.dispose(); pending.clear()
+        await Promise.allSettled(requests)
+        secrets.dispose(); pending.clear(); resolutions.clear()
       },
     }
   }

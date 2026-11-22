@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { BrowserContext } from 'playwright'
-import { installCookies } from './import-cookies.js'
+import { commitCookies } from './import-cookies.js'
 import { secretService } from './secret-service.js'
 import { safariMetadata } from './safari.js'
 import { signinFactory } from './index.js'
@@ -19,31 +19,32 @@ function transactionFixture(fail: boolean | 'rollback' = false) {
   const old = { name: 'fixture', value: 'old', domain: 'example.com', path: '/', secure: true, httpOnly: true, sameSite: 'Lax', sourceScheme: 'Secure', sourcePort: 443, session: true }
   const calls: Array<{ method: string; args: any }> = []; let sets = 0
   const session = { send: async (method: string, args: any) => {
-    calls.push({ method, args })
+    calls.push({ method, args: structuredClone(args) })
     if (method === 'Storage.getCookies') return { cookies: [old, { ...old, name: 'unrelated' }, { ...old, partitionKey: { topLevelSite: 'https://other.example', hasCrossSiteAncestor: true } }] }
     if (method === 'Network.setCookies' && fail && (++sets === 1 || fail === 'rollback')) throw new Error(canary)
     return {}
   }, detach: async () => {} }
-  const context = { serviceWorkers: () => [], pages: () => [{ workers: () => [] }], newCDPSession: async () => session, route: async () => {}, unroute: async () => {} } as unknown as BrowserContext
-  return { context, calls, old }
+  const context = { on() {}, off() {}, serviceWorkers: () => [], pages: () => [{ workers: () => [] }], newCDPSession: async () => session, route: async () => {}, unroute: async () => {} } as unknown as BrowserContext
+  return { host: { ...host(), withContext: async <T>(work: (context: BrowserContext) => Promise<T>) => work(context) }, calls, old }
 }
 test('partial target failure restores affected keys only, no partition-wide delete, resumes scripts', async () => {
   const f = transactionFixture(true)
   const cookies: ImportCookie[] = [{ name: 'fixture', value: canary, domain: 'example.com', path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }, { name: 'new', value: canary, domain: 'example.com', path: '/', secure: true }]
-  await assert.rejects(installCookies(f.context, cookies, signal), /were restored/)
+  await assert.rejects(commitCookies(f.host, cookies, signal), /were restored/)
   const restores = f.calls.filter(c => c.method === 'Network.setCookies')[1].args.cookies
   assert.equal(restores.length, 2); assert.equal(restores[0].value, 'old'); assert.equal(restores[1].expires, 1)
   assert.ok(!f.calls.some(c => c.method === 'Network.deleteCookies'))
-  assert.ok(f.calls.some(c => c.method === 'Emulation.setScriptExecutionDisabled' && c.args.value === false))
+  const resume = f.calls.findIndex(c => c.method === 'Emulation.setScriptExecutionDisabled' && c.args.value === false)
+  assert.ok(resume > f.calls.map(c => c.method).lastIndexOf('Network.setCookies'))
 })
 test('rollback failure says target uncertain, successful no-op skips writes', async () => {
   const failed = transactionFixture('rollback')
-  await assert.rejects(installCookies(failed.context, [{ name: 'fixture', value: canary, domain: 'example.com', path: '/', secure: true }], signal), /uncertain/)
+  await assert.rejects(commitCookies(failed.host, [{ name: 'fixture', value: canary, domain: 'example.com', path: '/', secure: true }], signal), /uncertain/)
   const noOp = transactionFixture()
-  assert.equal(await installCookies(noOp.context, [{ name: 'fixture', value: 'old', domain: 'example.com', path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }], signal), 1)
+  assert.equal(await commitCookies(noOp.host, [{ name: 'fixture', value: 'old', domain: 'example.com', path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }], signal), 1)
   assert.ok(!noOp.calls.some(c => c.method === 'Network.setCookies'))
   const persistent = transactionFixture(); Object.assign(persistent.old, { session: false, expires: Date.now() / 1000 + 86400 })
-  await installCookies(persistent.context, [{ name: 'fixture', value: 'old', domain: 'example.com', path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }], signal)
+  await commitCookies(persistent.host, [{ name: 'fixture', value: 'old', domain: 'example.com', path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }], signal)
   assert.ok(persistent.calls.some(c => c.method === 'Network.setCookies'))
 })
 test('cookie prefixes and unsupported relaxed attributes are rejected', () => {
