@@ -31,6 +31,16 @@ const DEFAULT_NATIVE = 'linux-x64';
 
 const dir = resolve(process.argv[2] ?? '');
 const perPlatform = process.argv[3] === '--platforms';
+const singlePlatform = process.argv[3] === '--platform' ? process.argv[4] : undefined;
+if (singlePlatform && !PLATFORMS_NATIVE.includes(singlePlatform)) throw new Error(`unsupported platform: ${singlePlatform}`);
+if (process.argv[3] && !perPlatform && !singlePlatform) throw new Error('usage: pack.mjs <dir> [--platforms | --platform <os-arch>]');
+
+// Explicit dispatch: the STT builder replaces backend/ wholesale, so it must NEVER receive browser.
+const BUILDERS = {
+  'voice-input': (platform) => execFileSync(resolve('shared/stt-backend/build.sh'), [dir, platform], { stdio: 'inherit' }),
+  htrans: (platform) => execFileSync(resolve('shared/stt-backend/build.sh'), [dir, platform], { stdio: 'inherit' }),
+  browser: (platform) => execFileSync(process.execPath, [resolve(dir, 'build.mjs'), '--platform', platform], { stdio: 'inherit' }),
+};
 
 if (basename(dir) === 'models' && !existsSync(`${dir}/halo-extension.json`)) packModels();
 else if (basename(resolve(dir, '..')) === 'skills' && existsSync(`${dir}/SKILL.md`)) packSkill();
@@ -59,7 +69,11 @@ function packSkill() {
 function zipDir(name) {
   const out = resolve(`dist/${name}.zip`);
   rmSync(out, { force: true });
-  execFileSync('zip', ['-r', '-X', '-q', out, '.', '-x', 'fetch-deps.sh', 'build.sh', 'node_modules/*', 'src/*', 'package.json', 'package-lock.json', 'tsconfig.json', 'update.json', 'backend/PLATFORM', '.DS_Store'], { cwd: dir, stdio: 'inherit' });
+  // Browser uses an allowlist: backend/src, tests, contracts and build inputs can never enter its archive.
+  const inputs = basename(dir) === 'browser'
+    ? ['halo-extension.json', 'index.html', 'icon.svg', 'README.md', 'dist', 'skills', 'backend/index.cjs', 'backend/node_modules', ...(existsSync(`${dir}/backend/native`) ? ['backend/native'] : [])]
+    : ['.'];
+  execFileSync('zip', ['-r', '-X', '-q', out, ...inputs, '-x', 'fetch-deps.sh', 'build.sh', 'node_modules/*', 'src/*', 'package.json', 'package-lock.json', 'tsconfig.json', 'update.json', 'backend/PLATFORM', '.DS_Store'], { cwd: dir, stdio: 'inherit' });
   console.log(`${out} (${(statSync(out).size / 1048576).toFixed(1)} MB)`);
   return [out, createHash('sha256').update(readFileSync(out)).digest('hex')];
 }
@@ -71,17 +85,17 @@ function packExtension() {
   mkdirSync('dist', { recursive: true });
   const release = `${RELEASE_BASE}/${m.id}-v${m.version}`;
   let url, sha256, packages;
-  if (perPlatform) {
-    // One build + zip per platform: build.sh rewrites backend/ for each, so the manifest check runs on every build.
+  if (perPlatform || singlePlatform) {
+    if (!Object.hasOwn(BUILDERS, m.id)) throw new Error(`No platform builder registered for ${m.id}`);
     packages = {};
-    for (const plat of PLATFORMS_NATIVE) {
-      execFileSync(resolve('shared/stt-backend/build.sh'), [dir, plat], { stdio: 'inherit' });
+    for (const plat of singlePlatform ? [singlePlatform] : PLATFORMS_NATIVE) {
+      BUILDERS[m.id](plat);
       const bad = manifestError(m);
       if (bad) { console.error(`${basename(dir)}/halo-extension.json: ${bad}`); process.exit(1); }
       const name = `${m.id}-${m.version}-${plat}`;
       packages[plat] = { url: `${release}/${name}.zip`, sha256: zipDir(name)[1] };
     }
-    ({ url, sha256 } = packages[DEFAULT_NATIVE]);
+    ({ url, sha256 } = packages[singlePlatform ?? DEFAULT_NATIVE]);
   } else {
     const bad = manifestError(m);
     if (bad) { console.error(`${basename(dir)}/halo-extension.json: ${bad}`); process.exit(1); }
@@ -89,8 +103,9 @@ function packExtension() {
     sha256 = zipDir(`${m.id}-${m.version}`)[1];
   }
   // Written to dist/, never to extensions/<id>/update.json: re-packing a version changes the zip bytes (and sha256), so only
-  // the copy cp'd in after `gh release create` may sit in the repo. minHalo is inherited from that committed copy.
-  const committed = existsSync(`${dir}/update.json`) ? JSON.parse(readFileSync(`${dir}/update.json`, 'utf8')) : {};
+  // the copy cp'd in after `gh release create` may sit in the repo. Seed browser's first unpublished release here;
+  // compatibility still lives in update.json, never in the install manifest. Later packs inherit the committed copy.
+  const committed = existsSync(`${dir}/update.json`) ? JSON.parse(readFileSync(`${dir}/update.json`, 'utf8')) : m.id === 'browser' ? { minHalo: '2.4.0' } : {};
   const update = {
     id: m.id,
     version: m.version,
@@ -138,14 +153,23 @@ function manifestError(m) {
     if (c.height !== undefined && (!Number.isInteger(c.height) || c.height < 80 || c.height > 480)) return 'chatbar.height must be an integer 80–480';
     if (c.order !== undefined && (!Number.isInteger(c.order) || c.order < 0 || c.order > 1000)) return 'chatbar.order must be an integer 0–1000';
   }
+  if (m.canvas !== undefined) {
+    const c = m.canvas;
+    if (!isObj(c)) return 'canvas must be an object';
+    if (c.icon !== undefined) {
+      if (typeof c.icon !== 'string' || c.icon === '' || c.icon.startsWith('/') || c.icon.split(/[\\/]/).includes('..') || !/\.(svg|png)$/i.test(c.icon)) return 'canvas.icon must be a relative .svg or .png path inside the extension directory';
+      if (!isFile(`${dir}/${c.icon}`)) return `canvas icon not found: ${c.icon}`;
+    }
+    for (const k of ['title', 'title_zh']) if (c[k] !== undefined && (typeof c[k] !== 'string' || c[k].trim() === '' || c[k].length > 64)) return `canvas.${k} must be a non-empty string (≤ 64 chars)`;
+  }
   if (m.backend !== undefined) {
     const b = m.backend;
     if (!isObj(b)) return 'backend must be an object';
     if (typeof b.entry !== 'string' || b.entry === '' || b.entry.startsWith('/') || b.entry.split(/[\\/]/).includes('..') || !/\.(js|mjs|cjs)$/.test(b.entry)) return 'backend.entry must be a relative .js / .mjs / .cjs path inside the extension directory';
     if (!isFile(`${dir}/${b.entry}`)) return `backend entry not found: ${b.entry}`;
   }
-  if (m.activity !== undefined || m.chatbar !== undefined) {
-    if (!Array.isArray(m.extensions)) return 'extensions must be an array (empty is fine with activity or chatbar)';
+  if (m.activity !== undefined || m.chatbar !== undefined || m.canvas !== undefined) {
+    if (!Array.isArray(m.extensions)) return 'extensions must be an array (empty is fine with activity, chatbar or canvas)';
   } else if (!Array.isArray(m.extensions) || m.extensions.length === 0) return 'extensions must be a non-empty array';
   for (const e of m.extensions) if (typeof e !== 'string' || !FILE_EXT_RE.test(e)) return `extensions entry "${e}" must look like ".glb" (lowercase, with dot)`;
   if (typeof m.entry !== 'string' || m.entry === '' || m.entry.startsWith('/') || m.entry.split(/[\\/]/).includes('..')) return 'entry must be a relative path inside the extension directory';
