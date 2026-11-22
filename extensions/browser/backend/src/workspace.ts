@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { BrowserContext, CDPSession, ElementHandle, Page } from 'playwright'
 import type { ExtensionCaller, ExtensionSessionCaller } from '../../contracts/halo-core/extension-notices.js'
 import { BROWSER_LIMITS, BROWSER_VIEWPORT, BROWSER_JPEG_QUALITY, type BrowserCommandRequest, type BrowserCommandResults, type BrowserCommandName, type BrowserState, type BrowserRuntimeInfo, type BrowserServerFrame, type BrowserPageRead, type BrowserViewerFrame } from './protocol.js'
-import { BrowserFault, checkSignal, safeUrl } from './errors.js'
+import { BrowserFault, BrowserLaunchFault, checkSignal, safeUrl } from './errors.js'
 import { ProfileStore } from './profile-store.js'
 import { FrameDelivery, type FramePeer } from './frame-delivery.js'
 import { InputDispatcher, validateInput } from './input.js'
@@ -159,7 +159,9 @@ export class WorkspaceBrowser {
         return context
       } catch (error) { await context.close(); this.context = undefined; throw error }
     })().catch(error => {
-      this.runtime = { protocol: 1, status: 'unavailable', reason: 'Browser launch failed. Install the Playwright Chromium shared-library prerequisites on the Halo server; no administrator install is performed.' }
+      const failure = error instanceof BrowserLaunchFault ? error : new BrowserLaunchFault(error)
+      if (!(error instanceof BrowserLaunchFault)) console.error(`[Browser] ${failure.message}`)
+      this.runtime = { protocol: 1, status: 'unavailable', reason: failure.message }
       this.broadcast({ type: 'runtime', runtime: this.runtime }); throw error
     }).finally(() => { clearTimeout(deadline); this.initialization = undefined; this.activityEnded() })
     this.scheduleLease(); this.changed()

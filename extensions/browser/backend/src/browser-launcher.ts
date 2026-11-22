@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import type { BrowserContext } from 'playwright'
 import { BROWSER_VIEWPORT, type BrowserRuntimeInfo } from './protocol.js'
-import { BrowserFault, checkSignal } from './errors.js'
+import { BrowserFault, BrowserLaunchFault, checkSignal } from './errors.js'
 import { privateDirectory } from './profile-store.js'
 import { trackBrowser, trackChildProcess } from './lifecycle.js'
 
@@ -62,7 +62,15 @@ export function createBrowserLauncher(dataDir: string): BrowserLauncher {
     }
     const launch = async (executablePath: string) => {
       checkSignal(signal)
-      const context = await chromium.launchPersistentContext(profile, { executablePath, headless: true, viewport: BROWSER_VIEWPORT, timeout: 30000, acceptDownloads: false, args: ['--no-first-run', '--no-default-browser-check'] })
+      let env: NodeJS.ProcessEnv | undefined
+      if (process.platform === 'linux') {
+        const root = join(dataDir, 'chromium-xdg')
+        const paths = { HOME: join(root, 'home'), XDG_CONFIG_HOME: join(root, 'config'), XDG_CACHE_HOME: join(root, 'cache'), XDG_DATA_HOME: join(root, 'data') }
+        await Promise.all(Object.values(paths).map(privateDirectory))
+        // Crashpad uses XDG config; NSS prefers an existing HOME/.pki over XDG data. Isolate the browser child only.
+        env = { ...process.env, ...paths }
+      }
+      const context = await chromium.launchPersistentContext(profile, { executablePath, headless: true, viewport: BROWSER_VIEWPORT, timeout: 30000, acceptDownloads: false, args: ['--no-first-run', '--no-default-browser-check'], ...(env ? { env } : {}) })
       try { checkSignal(signal); await trackBrowser(context); return context }
       catch (error) { await context.close(); throw error }
     }
@@ -71,6 +79,10 @@ export function createBrowserLauncher(dataDir: string): BrowserLauncher {
     const executable = await pinned(signal)
     progress({ protocol: 1, status: 'starting' })
     try { return await launch(executable) }
-    catch { throw new BrowserFault('unavailable') }
+    catch (error) {
+      const failure = new BrowserLaunchFault(error)
+      console.error(`[Browser] ${failure.message}`)
+      throw failure
+    }
   }
 }
