@@ -3,7 +3,9 @@
   "private": true,
   "description": "Workspace co-browsing backend, viewer and skill",
   "type": "module",
-  "engines": { "node": ">=22.13.0" },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test:backend": "node --import tsx --test test/backend/*.test.ts",
@@ -13,18 +15,18 @@
     "build": "node build.mjs"
   },
   "dependencies": {
+    "@homebridge/dbus-native": "0.7.9",
     "playwright": "1.61.1",
-    "ws": "8.18.3",
     "tldts": "7.0.19",
-    "@homebridge/dbus-native": "0.7.9"
+    "ws": "8.23.0"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "4.1.17",
     "@types/node": "22.19.1",
     "@types/ws": "8.18.1",
-    "typescript": "5.9.3",
-    "tsx": "4.20.6",
     "esbuild": "0.25.12",
     "tailwindcss": "4.1.17",
-    "@tailwindcss/cli": "4.1.17"
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
   }
 }
