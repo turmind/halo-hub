@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' ws: wss:; img-src blob:; base-uri 'none'; form-action 'none'">
+  <title>Browser · Halo</title>
+  <link rel="stylesheet" href="./dist/viewer.css">
+  <script type="module" src="./dist/viewer.js"></script>
+</head>
+<body class="m-0 h-dvh overflow-hidden bg-background font-sans text-sm text-foreground">
+  <main class="flex h-full flex-col">
+    <header class="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-card p-2">
+      <strong data-label="browser">Browser</strong>
+      <span id="mode" role="status" class="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">Waiting for Halo…</span>
+      <span class="flex-1"></span>
+      <button id="reconnect" hidden class="rounded border border-border px-3 py-1.5 hover:bg-accent">Reconnect</button>
+      <button id="takeover" disabled class="rounded bg-primary px-3 py-1.5 font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">Take over</button>
+      <button id="chat" disabled class="rounded border border-border px-3 py-1.5 hover:bg-accent disabled:opacity-50">Back to chat</button>
+    </header>
+    <p id="guidance" class="m-0 shrink-0 border-b border-border bg-muted px-3 py-2 text-xs" aria-live="polite">Open this view from Halo Canvas.</p>
+    <p id="error" role="alert" hidden class="m-0 shrink-0 border-b border-border px-3 py-2 text-destructive"></p>
+    <nav id="tabs" aria-label="Browser tabs" class="flex shrink-0 gap-1 overflow-x-auto border-b border-border p-1 empty:hidden"></nav>
+    <div id="surface" class="relative min-h-0 flex-1 overflow-hidden bg-muted">
+      <canvas id="screen" width="1280" height="800" aria-label="Remote browser, read-only" class="absolute touch-none"></canvas>
+      <textarea id="input" aria-label="Remote browser keyboard input" autocomplete="off" autocapitalize="off" spellcheck="false" disabled class="pointer-events-none absolute size-px resize-none overflow-hidden border-0 p-0 opacity-0"></textarea>
+      <p id="empty" class="pointer-events-none absolute inset-0 m-0 flex items-center justify-center p-8 text-center text-muted-foreground">Waiting for browser…</p>
+    </div>
+    <footer class="shrink-0 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+      <details><summary class="cursor-pointer" data-label="limits">Runs on the Halo server · limitations</summary>
+        <p class="mb-0" data-label="limitsText">Sign-ins are shared by later sessions in this workspace. Text paste is supported; clipboard copy, file upload/download management, audio/video calls, passkeys and native permission dialogs are not supported here.</p>
+      </details>
+    </footer>
+  </main>
+</body>
+</html>
