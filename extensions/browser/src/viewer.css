@@ -1,0 +1,15 @@
+@import "tailwindcss" source(none);
+@source "../index.html";
+@source "./**/*.ts";
+@theme inline {
+  --color-background: var(--halo-background, #ffffff);
+  --color-foreground: var(--halo-foreground, #171717);
+  --color-card: var(--halo-card, var(--halo-background, #ffffff));
+  --color-border: var(--halo-border, #e5e5e5);
+  --color-primary: var(--halo-primary, var(--halo-foreground, #171717));
+  --color-primary-foreground: var(--halo-primary-foreground, var(--halo-background, #fafafa));
+  --color-muted: var(--halo-muted, var(--halo-background, #f5f5f5));
+  --color-muted-foreground: var(--halo-muted-foreground, var(--halo-foreground, #737373));
+  --color-accent: var(--halo-accent, var(--halo-background, #f5f5f5));
+  --color-destructive: var(--halo-destructive, #b91c1c);
+}
