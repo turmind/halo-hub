@@ -16,7 +16,7 @@ async function frame(page: Page) {
 async function mode(frame: Frame, text: string) { await until(async () => (await frame.locator('#mode').innerText()).includes(text)) }
 
 test('Canvas viewer against real backend: DPI, inputs, ownership, resume and lifecycle', { timeout: 90000 }, async t => {
-  execFileSync(process.execPath, ['build.mjs', '--platform', 'linux-x64'], { cwd: root, stdio: 'pipe' })
+  execFileSync(process.execPath, ['build.mjs'], { cwd: root, stdio: 'pipe' })
   const f = await viewerFixture()
   t.after(() => f.close())
   const browser = await chromium.launch({ headless: true })

@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, fork, spawnSync } from 'node:child_process'
-import { mkdtemp, mkdir, readFile, writeFile, rm, cp, chmod, symlink } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, rm, cp, chmod, symlink, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -38,22 +38,27 @@ async function buildFixture(t: { after: (fn: () => Promise<void>) => void }) {
   return f
 }
 
-test('explicit browser dispatch, single-platform metadata, source preservation and ZIP allowlist', async t => {
+test('browser uses one platform-independent ZIP, flat update metadata and no builder dispatch', async t => {
   const f = await fixture(t)
   await mkdir(join(f.ext, 'backend/native'), { recursive: true })
   await writeFile(join(f.ext, 'backend/native/stale-fixture'), 'exclude obsolete outputs')
-  f.run(['--platform', 'linux-x64'])
-  assert.equal(await readFile(join(f.temp, 'calls'), 'utf8'), '["--platform","linux-x64"]\n')
+  f.run()
+  await assert.rejects(readFile(join(f.temp, 'calls')))
   assert.equal(await readFile(join(f.ext, 'backend/src/keep.ts'), 'utf8'), 'fixture')
-  const zip = join(f.temp, 'dist/browser-1.0.0-linux-x64.zip')
+  const zip = join(f.temp, 'dist/browser-1.0.0.zip')
   const names = execFileSync('unzip', ['-Z1', zip], { encoding: 'utf8' }).trim().split('\n')
   assert.ok(names.includes('backend/index.cjs')); assert.ok(names.includes('backend/node_modules/example/index.js'))
   assert.ok(names.includes('skills/browser/SKILL.md')); assert.ok(names.includes('dist/viewer.js'))
   assert.ok(!names.some(name => /^(src|test|contracts|\.staging|backend\/(src|native))\//.test(name) || name === 'build.mjs'))
   const update = JSON.parse(await readFile(join(f.temp, 'dist/browser-1.0.0.update.json'), 'utf8'))
-  assert.equal(update.minHalo, '2.4.0'); assert.deepEqual(Object.keys(update.packages), ['linux-x64'])
-  assert.equal(update.sha256, createHash('sha256').update(await readFile(zip)).digest('hex'))
-  assert.deepEqual(update.packages['linux-x64'], { url: update.url, sha256: update.sha256 })
+  assert.deepEqual(update, { id: 'browser', version: '1.0.0',
+    url: 'https://github.com/turmind/halo-hub/releases/download/browser-v1.0.0/browser-1.0.0.zip',
+    sha256: createHash('sha256').update(await readFile(zip)).digest('hex'), minHalo: '2.4.0' })
+  assert.deepEqual((await readdir(join(f.temp, 'dist'))).sort(), ['browser-1.0.0.update.json', 'browser-1.0.0.zip'])
+  for (const args of [['--platforms'], ['--platform', 'linux-x64']]) {
+    const result = spawnSync(process.execPath, [pack, f.ext, ...args], { cwd: f.temp, encoding: 'utf8' })
+    assert.notEqual(result.status, 0); assert.match(result.stderr, /No platform builder registered for browser/)
+  }
 })
 
 for (const id of ['voice-input', 'htrans']) test(`${id} regression: five unchanged STT builder calls, platform zips and committed minHalo`, async t => {
@@ -64,6 +69,8 @@ for (const id of ['voice-input', 'htrans']) test(`${id} regression: five unchang
   await writeFile(script, '#!/bin/sh\nprintf "%s|%s\\n" "$1" "$2" >> calls\nprintf "%s" "$2" > "$1/backend/index.cjs"\n')
   await chmod(script, 0o755)
   await writeFile(join(f.ext, 'update.json'), JSON.stringify({ minHalo: '2.3.0' }))
+  await mkdir(join(f.ext, 'backend/node_modules/example/test'), { recursive: true })
+  await writeFile(join(f.ext, 'backend/node_modules/example/test/keep.js'), 'STT contents stay unchanged')
   f.run(['--platforms'])
   const platforms = ['linux-x64', 'linux-arm64', 'darwin-arm64', 'darwin-x64', 'win-x64']
   assert.equal(await readFile(join(f.temp, 'calls'), 'utf8'), platforms.map(p => `${f.ext}|${p}\n`).join(''))
@@ -72,6 +79,7 @@ for (const id of ['voice-input', 'htrans']) test(`${id} regression: five unchang
   for (const platform of platforms) {
     const zip = join(f.temp, `dist/${id}-1.0.0-${platform}.zip`)
     assert.equal(execFileSync('unzip', ['-p', zip, 'backend/index.cjs'], { encoding: 'utf8' }), platform)
+    assert.equal(execFileSync('unzip', ['-p', zip, 'backend/node_modules/example/test/keep.js'], { encoding: 'utf8' }), 'STT contents stay unchanged')
     assert.equal(update.packages[platform].sha256, createHash('sha256').update(await readFile(zip)).digest('hex'))
   }
   // Legacy plain packing does not invoke any builder.
@@ -96,15 +104,28 @@ test('canvas manifest rules mirror Halo validation and required empty extensions
   await check({ canvas: undefined }, 'extensions must be a non-empty array')
 })
 
-test('real linux build and isolated extracted backend boot without development dependencies', { timeout: 60000 }, async t => {
+test('single ZIP strips dependency dev files and boots the backend, sign-in worker and Playwright CLI', { timeout: 60000 }, async t => {
   const f = await buildFixture(t)
   const before = createHash('sha256').update(await readFile(join(f.ext, 'backend/src/index.ts'))).digest('hex')
-  execFileSync(process.execPath, ['build.mjs', '--platform', 'linux-x64'], { cwd: f.ext, stdio: 'pipe' })
+  // Obsolete compiled outputs must not survive the platform-independent build.
+  await mkdir(join(f.ext, 'backend/native'), { recursive: true })
+  await writeFile(join(f.ext, 'backend/native/stale-fixture'), 'not a runtime dependency')
+  execFileSync(process.execPath, ['build.mjs'], { cwd: f.ext, stdio: 'pipe' })
   assert.equal(createHash('sha256').update(await readFile(join(f.ext, 'backend/src/index.ts'))).digest('hex'), before)
+  await assert.rejects(readFile(join(f.ext, 'backend/native/stale-fixture')))
   f.run()
   const extracted = join(f.temp, 'extracted'); await mkdir(extracted)
   execFileSync('unzip', ['-q', join(f.temp, 'dist/browser-1.0.0.zip'), '-d', extracted])
-  await readFile(join(extracted, 'backend/node_modules/playwright/cli.js'))
+  const files = (await readdir(join(extracted, 'backend/node_modules'), { recursive: true })).map(file => file.replaceAll('\\', '/'))
+  const development = files.filter(file => /(^|\/)(tests?|__tests__|\.github|examples?|docs?|fixtures?|benchmarks?|coverage)(\/|$)|\.(test|spec)\.|\.(map|[cm]?ts|tsx)$/i.test(file))
+  // lib/mcp/test is CLI runtime, not Playwright's test suite: deleting it breaks browser installation.
+  assert.deepEqual(development.filter(file => !/^playwright\/lib\/mcp\/test(?:\/|$)/.test(file)), [])
+  assert.ok(files.includes('playwright/lib/mcp/test/testBackend.js'))
+  for (const dependency of ['playwright', 'playwright-core', 'ws', 'tldts', '@homebridge/dbus-native']) {
+    await readFile(join(extracted, 'backend/node_modules', dependency, 'package.json'))
+    await readFile(join(extracted, 'backend/node_modules', dependency, 'LICENSE'))
+  }
+  assert.match(execFileSync(process.execPath, ['backend/node_modules/playwright/cli.js', 'install', '--help'], { cwd: extracted, encoding: 'utf8' }), /install/)
   await readFile(join(extracted, 'backend/node_modules/playwright-core/browsers.json'))
   const css = await readFile(join(extracted, 'dist/viewer.css'), 'utf8')
   assert.ok(!css.includes('@import')); assert.ok(css.includes('--halo-background'))
@@ -127,19 +148,9 @@ test('real linux build and isolated extracted backend boot without development d
   assert.equal(sources.body.result[0].available, true)
 })
 
-test('all cross-platform builds use the same JS driver with no native-output prerequisite', { timeout: 60000 }, async t => {
+test('browser build rejects obsolete platform flags without changing outputs', async t => {
   const f = await buildFixture(t)
-  const before = await readFile(join(f.ext, 'backend/src/index.ts'), 'utf8')
-  // A leftover output from the old native plan must not enter the next package.
-  await mkdir(join(f.ext, 'backend/native'), { recursive: true })
-  await writeFile(join(f.ext, 'backend/native/stale-fixture'), 'not a runtime dependency')
-  for (const platform of ['linux-arm64', 'darwin-arm64', 'darwin-x64', 'win-x64']) {
-    const result = spawnSync(process.execPath, ['build.mjs', '--platform', platform], { cwd: f.ext, encoding: 'utf8' })
-    assert.equal(result.status, 0, result.stderr)
-    assert.match(result.stdout, /OS-tool sign-in/)
-    await assert.rejects(readFile(join(f.ext, 'backend/native/stale-fixture')))
-    await readFile(join(f.ext, 'backend/node_modules/playwright/cli.js'))
-    await readFile(join(f.ext, 'backend/node_modules/playwright-core/lib/coreBundle.js'))
-    assert.equal(await readFile(join(f.ext, 'backend/src/index.ts'), 'utf8'), before)
-  }
+  const result = spawnSync(process.execPath, ['build.mjs', '--platform', 'linux-x64'], { cwd: f.ext, encoding: 'utf8' })
+  assert.notEqual(result.status, 0); assert.match(result.stderr, /one platform-independent package/)
+  assert.equal(await readFile(join(f.ext, 'backend/index.cjs'), 'utf8'), 'fixture')
 })

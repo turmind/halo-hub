@@ -7,11 +7,7 @@ import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 
 const root = dirname(fileURLToPath(import.meta.url));
-const args = process.argv.slice(2);
-const option = name => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
-if (args.some((arg, i) => i % 2 === 0 && arg !== '--platform') || args.length % 2) throw new Error('usage: build.mjs [--platform <os-arch>]');
-const platform = option('--platform') ?? `${process.platform === 'win32' ? 'win' : process.platform}-${process.arch}`;
-if (!['linux-x64', 'linux-arm64', 'darwin-arm64', 'darwin-x64', 'win-x64'].includes(platform)) throw new Error(`Unsupported platform: ${platform}`);
+if (process.argv.length > 2) throw new Error('usage: build.mjs (one platform-independent package)');
 // Sign-in uses bundled JS plus OS security/PowerShell/D-Bus tools, not compiled
 // bridges. The Playwright JS driver uses Halo's Node; browser downloads occur on target.
 const stage = join(root, '.staging/build');
@@ -46,7 +42,14 @@ async function copyDependency(name, from) {
     return;
   }
   copied.set(name, dependency.version);
-  await cp(source, join(stage, 'backend/node_modules', name), { recursive: true, dereference: true, filter: path => !path.slice(source.length).split(/[\\/]/).includes('node_modules') });
+  await cp(source, join(stage, 'backend/node_modules', name), { recursive: true, dereference: true, filter: path => {
+    const parts = path.slice(source.length).split(/[\\/]/).filter(Boolean);
+    const file = parts.at(-1) ?? '';
+    // Playwright's CLI imports lib/mcp/test at startup: this is runtime code, not its test suite.
+    const runtimeTest = name === 'playwright' && parts.slice(0, 3).join('/') === 'lib/mcp/test';
+    if (parts.some(part => /^(node_modules|tests?|__tests__|\.git|\.github|examples?|docs?|fixtures?|benchmarks?|coverage)$/i.test(part) && !(runtimeTest && part === 'test'))) return false;
+    return !/\.(?:test|spec)\.|\.(?:map|[cm]?ts|tsx)$/i.test(file);
+  } });
   for (const child of Object.keys(dependency.dependencies ?? {})) await copyDependency(child, source);
   // Playwright's optional fsevents is macOS-only and not needed for browser automation.
 }
@@ -57,4 +60,4 @@ for (const output of ['node_modules', 'native', 'index.cjs']) {
   const source = join(stage, 'backend', output);
   if (await access(source).then(() => true, () => false)) await cp(source, join(root, 'backend', output), { recursive: true });
 }
-console.log(`[BrowserBuild] ${platform}: viewer + backend + ${copied.size} runtime packages + OS-tool sign-in`);
+console.log(`[BrowserBuild] Platform-independent viewer + backend + ${copied.size} runtime packages + OS-tool sign-in`);
