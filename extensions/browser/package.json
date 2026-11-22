@@ -1,12 +1,30 @@
 {
   "name": "halo-hub-browser",
   "private": true,
-  "description": "Co-browsing extension shared contracts; implementation follows in workers D-F.",
+  "description": "Workspace co-browsing backend, viewer and skill",
   "type": "module",
+  "engines": { "node": ">=22.13.0" },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test:backend": "node --import tsx --test test/backend/*.test.ts",
+    "test:viewer": "node --import tsx --test test/viewer/*.test.ts",
+    "test:pack": "node --import tsx --test test/pack/*.test.ts",
+    "test:signin": "node --import tsx --test backend/src/signin-import/*.test.ts",
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.61.1",
+    "ws": "8.18.3",
+    "tldts": "7.0.19",
+    "@homebridge/dbus-native": "0.7.9"
   },
   "devDependencies": {
-    "typescript": "^5.7.0"
+    "@types/node": "22.19.1",
+    "@types/ws": "8.18.1",
+    "typescript": "5.9.3",
+    "tsx": "4.20.6",
+    "esbuild": "0.25.12",
+    "tailwindcss": "4.1.17",
+    "@tailwindcss/cli": "4.1.17"
   }
 }

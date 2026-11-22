@@ -1,0 +1,9 @@
+{
+  "baseRevision": "0c5ac697a6652e9a657d32df1e91d1df1fb7fae6",
+  "files": {
+    "extension-notices.ts": "1672c60e8de8d7cea0a38610e11486d72625b21ada93719ba7e4266a8ffeb798",
+    "extension-frames.ts": "4a93638a337fc86a4d52ec2f4582223b1d0a92644bcaf5de180e8a3a42656839",
+    "extension-types.ts": "b613a01e2367aa60db4687466e5abcfc1103117b10af37c5c54a8055dbecb9d1"
+  },
+  "licenseSha256": "df9393df221cb2d8c153b0c29058177baad871c917c040c4b0d95fe413e1c052"
+}

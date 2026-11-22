@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.staging/
+backend/index.cjs
+backend/node_modules/
