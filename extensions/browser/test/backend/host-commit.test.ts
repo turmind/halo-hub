@@ -11,7 +11,7 @@ import { signinFactory } from '../../backend/src/signin-import/index.js'
 import { home, chromiumStore, canary } from '../../backend/src/signin-import/fixtures.js'
 import { reasons, type ImportCookie } from '../../backend/src/signin-import/types.js'
 import { BROWSER_LIMITS, type BrowserCommandResponse } from '../../backend/src/protocol.js'
-import { http, session } from './fixtures.js'
+import { http, session, fixtureLauncher, fixture as browserFixture } from './fixtures.js'
 
 function deferred() { let resolve!: () => void; return { promise: new Promise<void>(done => { resolve = done }), resolve } }
 async function fixture(t: TestContext) {
@@ -46,7 +46,7 @@ async function fixture(t: TestContext) {
   })
   t.mock.method(ProfileStore.prototype, 'save', async () => true)
   const completed = deferred(); let completionMessage = ''
-  const backend = new BrowserBackend({ dataDir: join(f.dir, 'data'), send: message => {
+  const backend = new BrowserBackend({ dataDir: join(f.dir, 'data'), launch: fixtureLauncher, send: message => {
     if (message.type === 'halo:notice' && message.notice.message.startsWith('Browser operation completed')) { completionMessage = message.notice.message; completed.resolve() }
   }, signin: bound => {
     host = bound
@@ -174,5 +174,46 @@ test('forced cleanup deadline invalidates the original context and reports uncer
   assert.ok(response.ok && 'result' in response)
   assert.deepEqual(response.result, { status: 'unavailable', reason: reasons.uncertain })
   assert.equal(f.checkpoints, 0); assert.equal(f.closed, true); assert.equal(f.launches, 1)
+  release.resolve()
+})
+
+test('commit self-timeout removes the backend workspace so a new ID can open it again', { timeout: 15000 }, async t => {
+  const f = await fixture(t); const entered = deferred(); const release = deferred()
+  f.hooks.set = async count => { if (count === 1) { entered.resolve(); await release.promise } }
+  const timeout = globalThis.setTimeout; const deadlines: (() => void)[] = []
+  // Fire the actual armed callbacks after mutation starts, not a tiny wall-clock timer that can beat source validation.
+  const timers = t.mock.method(globalThis, 'setTimeout', ((callback: (...args: any[]) => void, delay?: number, ...args: any[]) => {
+    if (delay === BROWSER_LIMITS.commandTimeoutMs) deadlines.push(() => callback(...args))
+    return timeout(callback, delay, ...args)
+  }) as typeof setTimeout)
+  const pending = f.start(); await entered.promise
+  const original = f.workspace
+  assert.equal(deadlines.length, 2); deadlines[1]() // Commit deadline requests backend removal.
+  assert.equal(deadlines.length, 3); deadlines[2]() // Cleanup deadline invalidates the wedged target.
+  await f.completed.promise; timers.mock.restore()
+  const response = await result(f, pending)
+  assert.ok(response.ok && 'result' in response)
+  assert.deepEqual(response.result, { status: 'unavailable', reason: reasons.uncertain })
+  assert.equal(f.closed, true); assert.equal(original.life.signal.aborted, true)
+  release.resolve(); t.mock.restoreAll() // Reopen through the real launcher, not the closed target double.
+  const site = await browserFixture(); t.after(() => site.close())
+  const reopened = await http(f.socket, session('one', f.caller.projectId, 'turn2'), '/command', { id: 'reopen', op: 'open', args: { url: site.origin } })
+  assert.ok(reopened.body.ok && reopened.body.result?.tab, `reopen HTTP ${reopened.status}: ${reopened.body.error?.code ?? 'missing-tab'}`)
+  assert.equal(reopened.body.result.viewId, original.viewId)
+})
+
+test('backend stop shortens an in-progress live close and retains uncertain completion', async t => {
+  const f = await fixture(t); const entered = deferred(); const release = deferred()
+  f.hooks.set = async count => { if (count === 1) { entered.resolve(); await release.promise } }
+  const pending = f.start(); await entered.promise
+  const liveClose = f.workspace.close()
+  const timeout = globalThis.setTimeout
+  const shortened = t.mock.method(globalThis, 'setTimeout', ((callback: (...args: any[]) => void, delay?: number, ...args: any[]) => timeout(callback, delay === 3000 ? 10 : delay, ...args)) as typeof setTimeout)
+  await f.backend.close(); await liveClose; shortened.mock.restore()
+  const first = await pending
+  assert.ok(first.ok)
+  assert.ok(f.completionMessage.includes(reasons.uncertain))
+  assert.equal(f.checkpoints, 0); assert.equal(f.closed, true)
+  await f.workspace.close(3000) // Completed close must not arm a lingering shutdown timer.
   release.resolve()
 })

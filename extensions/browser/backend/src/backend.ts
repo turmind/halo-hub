@@ -15,7 +15,7 @@ import { siteScope } from './signin-import/site-scope.js'
 
 interface Operation {
   caller: ExtensionSessionCaller; hash: string; controller: AbortController; operation: BrowserOperation
-  response: Promise<BrowserCommandResponse>; expires: number; workspace: WorkspaceBrowser; epoch: number; importScope?: string; notified?: boolean; wake?: () => void
+  response: Promise<BrowserCommandResponse>; expires: number; workspace: WorkspaceBrowser; epoch: number; importScope?: string; resolvedImportScope?: string; notified?: boolean; wake?: () => void
 }
 export interface BackendOptions {
   dataDir: string
@@ -32,6 +32,7 @@ export class BrowserBackend {
   private workspaces = new Map<string, WorkspaceBrowser>()
   private operations = new Map<string, Operation>()
   private closed = false
+  private completionLife = new AbortController()
   private expiryTimer?: ReturnType<typeof setTimeout>
   private launch: BrowserLauncher
   private connections = new Set<import('node:net').Socket>()
@@ -171,10 +172,11 @@ export class BrowserBackend {
     const existing = this.operations.get(key)
     if (existing && existing.hash !== hash) throw new BrowserFault('invalid-request')
     let importScope: string | undefined
+    let scope: ReturnType<typeof siteScope> | undefined
     if (request.op === 'signin-import') {
-      try { importScope = JSON.stringify([siteScope(request.args.site).host, request.args.from ?? null]) }
+      try { scope = siteScope(request.args.site); importScope = JSON.stringify([scope.host, scope.exact, request.args.from ?? null]) }
       catch { throw new BrowserFault('invalid-request') }
-      const prior = [...this.operations.values()].find(entry => entry.workspace === workspace && entry.caller.sessionId === caller.sessionId && entry.importScope === importScope && entry.expires > Date.now())
+      const prior = [...this.operations.values()].find(entry => entry.workspace === workspace && entry.caller.sessionId === caller.sessionId && (entry.importScope === importScope || entry.resolvedImportScope === importScope) && entry.expires > Date.now())
       if (prior) {
         if (prior.operation.status === 'completed' && caller.userTurnId === prior.caller.userTurnId && workspace.driver === 'user') return { id: prior.operation.id, op: 'signin-import', ok: true, result: { status: 'waiting-for-user' } }
         return this.wait(prior, { ...request, id: prior.operation.id })
@@ -195,7 +197,10 @@ export class BrowserBackend {
     operation.response = this.execute(operation, request).then(response => {
       // Terminal non-imports may be explicitly retried with a new request ID after
       // resuming the lease. Keep ID dedupe and successful imports non-replayable.
-      if (response.op === 'signin-import' && response.ok && 'result' in response && ['cancelled', 'unavailable'].includes(response.result.status)) operation.importScope = undefined
+      if (response.op === 'signin-import' && response.ok && 'result' in response) {
+        if (['cancelled', 'unavailable'].includes(response.result.status)) operation.importScope = undefined
+        if (response.result.status === 'imported' && scope) operation.resolvedImportScope = JSON.stringify([scope.host, scope.exact, response.result.from.id])
+      }
       operation.operation = { id: request.id, status: 'completed', response: response as Exclude<BrowserCommandResponse, { status: 'running' }> }
       workspace.broadcast({ type: 'operation', operation: operation.operation })
       return response
@@ -259,7 +264,8 @@ export class BrowserBackend {
         operation.notified = true
         void operation.response.then(result => {
           const outcome = result.op === 'signin-import' && result.ok && 'result' in result ? ` Sign-in: ${result.result.status}${result.result.status === 'unavailable' ? ` — ${result.result.reason}` : ''}.` : ''
-          this.hooks.open(operation.caller, operation.workspace.viewId, `Browser operation completed (${operation.operation.id}).${outcome} Retrieve its result once with operation ${operation.operation.id} in the same chat.`, operation.workspace.life.signal)
+          // Completion belongs to the caller/operation, not the now-ended workspace lease. Hooks still revoke invalid bindings.
+          this.hooks.open(operation.caller, operation.workspace.viewId, `Browser operation completed (${operation.operation.id}).${outcome} Retrieve its result once with operation ${operation.operation.id} in the same chat.`, this.completionLife.signal)
         })
       }
       return response
@@ -277,8 +283,12 @@ export class BrowserBackend {
     if (this.closed) return
     this.closed = true; clearTimeout(this.expiryTimer)
     for (const operation of this.operations.values()) operation.controller.abort()
-    await Promise.all([...this.workspaces.values()].map(workspace => workspace.close()))
-    this.workspaces.clear(); this.operations.clear(); this.hooks.close(); this.hooks.setBusy(false)
+    await Promise.all([...this.workspaces.values()].map(workspace => workspace.close(3000)))
+    // Forced guard invalidation settles import DTOs before sockets/IPC disappear; do not wait on unrelated wedged work.
+    let settleTimer: ReturnType<typeof setTimeout> | undefined
+    try { await Promise.race([Promise.allSettled([...this.operations.values()].map(operation => operation.response)), new Promise<void>(resolve => { settleTimer = setTimeout(resolve, 250) })]) }
+    finally { clearTimeout(settleTimer) }
+    this.workspaces.clear(); this.operations.clear(); this.completionLife.abort(); this.hooks.close(); this.hooks.setBusy(false)
     for (const socket of this.connections) socket.destroy()
     await new Promise<void>(resolve => this.wss.close(() => resolve()))
     if (this.server.listening) await new Promise<void>(resolve => this.server.close(() => resolve()))

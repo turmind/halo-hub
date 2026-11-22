@@ -34,6 +34,7 @@ test('private routes, request dedupe, session/workspace separation and newer-hum
     assert.equal(other.body.ok, true); assert.equal(f.contexts.length, 2)
     assert.equal((await http(f.socket, session('two', '/manufactured/other'), '/operations/open')).status, 404)
     const shot = await http(f.socket, a, '/command', { id: 'shot', op: 'screenshot', args: {} })
+    assert.ok(shot.body.ok && shot.body.result?.artifactId, `screenshot HTTP ${shot.status}: ${shot.body.error?.code ?? shot.body.status ?? 'missing-result'}`)
     assert.equal((await http(f.socket, a, '/artifacts/' + shot.body.result.artifactId)).status, 200)
     assert.equal((await http(f.socket, session('two'), '/artifacts/' + shot.body.result.artifactId)).status, 403)
     const handoff = await http(f.socket, a, '/command', { id: 'handoff', op: 'handoff', args: {} })

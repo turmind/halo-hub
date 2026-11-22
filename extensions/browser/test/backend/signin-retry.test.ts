@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { BrowserBackend } from '../../backend/src/backend.js'
 import type { SigninImportResult } from '../../backend/src/protocol.js'
-import { session } from './fixtures.js'
+import { http, session } from './fixtures.js'
 
 for (const outcome of ['cancelled', 'unavailable'] as const) test(`explicit retry after ${outcome} preserves request dedupe, handoff and successful import`, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'browser-signin-retry-'))
@@ -65,4 +65,27 @@ test('equivalent site spellings deduplicate pending and successful imports but n
     await backend.command(newer, { ...equivalent, id: 'different-source', args: { ...equivalent.args, from: 'two' } })
     assert.equal(imports, 2)
   } finally { release(); await backend.close(); await rm(directory, { recursive: true, force: true }) }
+})
+
+test('independent HTTP import requests share the successful implicit source alias after newer-turn resume', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'browser-signin-alias-'))
+  let imports = 0; let services = 0
+  const backend = new BrowserBackend({ dataDir: directory, send: () => {}, signin: () => {
+    services++
+    return { sources: async () => [], dispose: async () => {}, import: async () => {
+      imports++; return { status: 'imported', count: 1, from: { id: 'resolved-source', browser: 'Fixture', profile: 'Manufactured' } }
+    } }
+  } })
+  const socket = join(directory, 'backend.sock'); await backend.listen(socket)
+  try {
+    const first = await http(socket, session(), '/command', { id: 'implicit', op: 'signin-import', args: { site: 'example.com' } })
+    assert.equal(first.body.result.status, 'imported')
+    const newer = session('one', session().projectId, 'turn2')
+    const resumed = await http(socket, newer, '/command', { id: 'resume', op: 'control.resume', args: {} })
+    assert.equal(resumed.body.result.status, 'ok')
+    const second = await http(socket, newer, '/command', { id: 'explicit', op: 'signin-import', args: { site: 'https://EXAMPLE.COM/path', from: 'resolved-source' } })
+    assert.deepEqual(second.body, first.body); assert.equal(imports, 1); assert.equal(services, 1)
+    await http(socket, newer, '/command', { id: 'distinct', op: 'signin-import', args: { site: 'example.com', from: 'other-source' } })
+    assert.equal(imports, 2); assert.equal(services, 2)
+  } finally { await backend.close(); await rm(directory, { recursive: true, force: true }) }
 })

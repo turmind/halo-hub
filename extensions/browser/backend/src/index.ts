@@ -18,5 +18,5 @@ const stop = async () => {
 }
 process.on('SIGTERM', () => { void stop() })
 process.on('SIGINT', () => { void stop() })
-process.on('disconnect', () => { killOwnedBrowsers(); void stop() })
+process.on('disconnect', () => { void stop() })
 void backend.listen(socket).catch(() => { console.error('[Browser] Private socket initialization failed.'); process.exit(1) })

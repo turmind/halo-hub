@@ -121,7 +121,7 @@ export class WorkspaceBrowser {
     checkSignal(this.life.signal)
     if (this.initialization) return this.initialization
     if (this.context) return this.context
-    const deadline = setTimeout(() => { this.life.abort(); if (this.context) killContext(this.context) }, 12 * 60 * 1000)
+    const deadline = setTimeout(() => { this.expired(); if (this.context) killContext(this.context) }, 12 * 60 * 1000)
     this.initialization = (async () => {
       await this.store.init()
       const context = await this.launch(this.store.profile, this.life.signal, runtime => { this.runtime = runtime; this.broadcast({ type: 'runtime', runtime }) })
@@ -286,7 +286,7 @@ export class WorkspaceBrowser {
         checkpoint: async () => { validate(); await this.saveCheckpoint(context); validate() },
       }
       this.commit = guard
-      const timer = setTimeout(() => { void this.close() }, BROWSER_LIMITS.commandTimeoutMs)
+      const timer = setTimeout(() => this.expired(), BROWSER_LIMITS.commandTimeoutMs)
       try { return await Promise.race([work(target), interrupted]) }
       finally { clearTimeout(timer); active = false; this.commit = undefined; finish() }
     })
@@ -343,7 +343,19 @@ export class WorkspaceBrowser {
         case 'select-tab': await this.select(request.args.tabId); result = { status: 'ok' }; break
         case 'tabs': result = { tabs: this.state().tabs, activeTabId: this.activeTabId }; break
         case 'screenshot': {
-          const data = await this.page().screenshot({ type: 'png', timeout: 10000 })
+          const page = this.page(); const deadline = performance.now() + 10000
+          const remaining = () => { const ms = deadline - performance.now(); if (ms <= 0) throw new BrowserFault('operation-failed'); return ms }
+          let data: Buffer
+          try { data = await page.screenshot({ type: 'png', timeout: remaining() }) }
+          catch (error) {
+            if (!(error instanceof Error) || error.message.split('\n')[0] !== 'page.screenshot: Protocol error (Page.captureScreenshot): Unable to capture screenshot') throw error
+            // Chromium 149 returns this for an empty surface copy, not encoding/delivery failure.
+            // Until Chromium fixes surface readiness, retry once after foreground + visible paint, within the same budget.
+            fence(); await page.bringToFront()
+            const visible = await page.waitForFunction(() => document.visibilityState === 'visible' && new Promise<boolean>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(document.visibilityState === 'visible')))), undefined, { timeout: remaining() })
+            await visible.dispose(); fence()
+            data = await page.screenshot({ type: 'png', timeout: remaining() })
+          }
           fence()
           if (data.length > BROWSER_LIMITS.screenshotBytes) throw new BrowserFault('unavailable')
           await this.sweepArtifacts()
@@ -405,22 +417,34 @@ export class WorkspaceBrowser {
     validate()
   }
   private closeTask?: Promise<void>
-  close(): Promise<void> {
-    if (!this.closeTask) this.closeTask = this.closeBrowser()
-    return this.closeTask
+  close(shutdownMs?: number): Promise<void> {
+    this.closeTask ??= this.closeBrowser()
+    if (shutdownMs === undefined) return this.closeTask
+    // Process stop can shorten an already-running live close, without leaving a timer after it finishes.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    return Promise.race([this.closeTask, new Promise<void>(resolve => {
+      timer = setTimeout(() => { this.forceClose(); resolve() }, shutdownMs)
+    })]).finally(() => { clearTimeout(timer) })
+  }
+  private forceClose() {
+    const context = this.commit?.context ?? this.context
+    if (this.commit) {
+      this.commit.invalidate()
+      this.runtime = { protocol: 1, status: 'unavailable', reason: 'Browser import cleanup timed out; sign-in state is uncertain.' }
+      this.broadcast({ type: 'runtime', runtime: this.runtime })
+    }
+    this.closing = true; this.context = undefined
+    if (context) killContext(context)
   }
   private async closeBrowser() {
     this.closeRequested = true; this.epoch++; this.life.abort()
     clearTimeout(this.leaseTimer); clearTimeout(this.checkpointTimer)
     const guard = this.commit
-    let forced = false
     if (guard) {
       let timer: ReturnType<typeof setTimeout> | undefined
       try {
         await Promise.race([guard.done, new Promise<void>(resolve => { timer = setTimeout(() => {
-          forced = true; guard.invalidate(); this.closing = true; this.context = undefined
-          this.runtime = { protocol: 1, status: 'unavailable', reason: 'Browser import cleanup timed out; sign-in state is uncertain.' }
-          this.broadcast({ type: 'runtime', runtime: this.runtime }); killContext(guard.context); resolve()
+          this.forceClose(); resolve()
         }, BROWSER_LIMITS.commandTimeoutMs) })])
       } finally { clearTimeout(timer) }
     }
@@ -431,7 +455,7 @@ export class WorkspaceBrowser {
       const deadline = setTimeout(() => killContext(context), 3000)
       try {
         // The guarded import already persisted commit/undo, or reported uncertainty. Do not checkpoint tentative state again.
-        if (!guard && !forced) await this.saveCheckpoint(context).catch(() => {})
+        if (!guard && !this.closing) await this.saveCheckpoint(context).catch(() => {})
         this.closing = true
         await context.close().catch(() => {})
       } finally { clearTimeout(deadline) }
