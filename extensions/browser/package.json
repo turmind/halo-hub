@@ -1,0 +1,12 @@
+{
+  "name": "halo-hub-browser",
+  "private": true,
+  "description": "Co-browsing extension shared contracts; implementation follows in workers D-F.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
