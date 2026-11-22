@@ -29,5 +29,5 @@ export async function chromiumStore(root: string, profile = 'Default', options: 
   return source
 }
 export function host(confirm: SigninHost['confirm'] = async () => 'cancel'): SigninHost {
-  return { caller: { kind: 'session', bindingId: 'fixture', projectId: '/manufactured', sessionId: 'one', rootSessionId: 'one', agentId: 'fixture', userTurnId: 'turn1' }, signal: new AbortController().signal, confirm, withContext: async () => { throw new Error('fixture has no browser') }, checkpoint: async () => {} }
+  return { caller: { kind: 'session', bindingId: 'fixture', projectId: '/manufactured', sessionId: 'one', rootSessionId: 'one', agentId: 'fixture', userTurnId: 'turn1' }, signal: new AbortController().signal, confirm, withCommit: async () => { throw new Error('fixture has no browser') } }
 }

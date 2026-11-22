@@ -110,30 +110,38 @@ class CookieImportTransaction {
 
 /** Success is linearized at a completed checkpoint; aborts after it cannot rewrite the result. */
 export async function commitCookies(host: SigninHost, cookies: ImportCookie[], signal: AbortSignal, beforeApply: () => Promise<void> = async () => {}): Promise<number> {
-  const transaction = new CookieImportTransaction(cookies)
-  try {
-    await host.withContext(async context => {
-      check(signal)
-      await beforeApply()
-      return transaction.apply(context, signal)
-    })
-    check(signal) // Includes abort/rejection at the outer context boundary, before persistence.
-    await host.checkpoint()
-    transaction.commit()
-    return cookies.length
-  } catch (error) {
-    if (transaction.needsRollback) {
-      try { await host.withContext(context => transaction.rollback(context)) }
-      catch { throw new SigninFault('uncertain') }
-    }
-    if (transaction.needsCheckpoint) {
-      // A concurrent checkpoint could have persisted the tentative cookies: persist the undo too.
-      try { await host.checkpoint(); transaction.verifyRestored() }
-      catch { throw new SigninFault('uncertain') }
-    }
-    // In particular, never turn a failed/uncertain rollback into an ordinary cancellation.
-    if (error instanceof SigninFault && error.reason === 'uncertain') throw error
-    if (signal.aborted) throw new SigninFault('cancelled')
-    throw transaction.needsCheckpoint ? new SigninFault('target') : error
-  } finally { transaction.dispose() }
+  let entered = false
+  try { return await host.withCommit(async target => {
+    entered = true
+    const transaction = new CookieImportTransaction(cookies)
+    try {
+      await target.withContext(async context => {
+        check(signal)
+        await beforeApply()
+        return transaction.apply(context, signal)
+      })
+      check(signal) // Includes abort/rejection at the outer context boundary, before persistence.
+      await target.checkpoint()
+      transaction.commit()
+      return cookies.length
+    } catch (error) {
+      if (transaction.needsRollback) {
+        try { await target.cleanup(context => transaction.rollback(context)) }
+        catch { throw new SigninFault('uncertain') }
+      }
+      if (transaction.needsCheckpoint) {
+        // A failed commit checkpoint may have written tentative cookies: persist the undo too.
+        try { await target.checkpoint(); transaction.verifyRestored() }
+        catch { throw new SigninFault('uncertain') }
+      }
+      // In particular, never turn a failed/uncertain rollback into an ordinary cancellation.
+      if (error instanceof SigninFault && error.reason === 'uncertain') throw error
+      if (signal.aborted) throw new SigninFault('cancelled')
+      throw transaction.needsCheckpoint ? new SigninFault('target') : error
+    } finally { transaction.dispose() }
+  }) } catch (error) {
+    if (!entered && signal.aborted) throw new SigninFault('cancelled')
+    if (entered && !(error instanceof SigninFault)) throw new SigninFault('uncertain')
+    throw error
+  }
 }

@@ -11,6 +11,7 @@ import { InputDispatcher, validateInput } from './input.js'
 import type { BrowserLauncher } from './browser-launcher.js'
 import type { Hooks } from './hooks.js'
 import { killContext } from './lifecycle.js'
+import type { SigninCommit } from './signin-service.js'
 
 export interface Viewer extends FramePeer { json(frame: BrowserServerFrame): void; close(): void }
 interface ViewerState { caller: ExtensionCaller; visible: boolean; subscribed: boolean }
@@ -46,6 +47,8 @@ export class WorkspaceBrowser {
   private oversizedFrame = false
   private capturing = false
   private closing = false
+  private closeRequested = false
+  private commit?: { context: BrowserContext; done: Promise<void>; invalidate: () => void }
   private lastActivity = performance.now()
 
   constructor(readonly projectId: string, dataDir: string, private launch: BrowserLauncher, readonly hooks: Hooks, private changed: () => void, private expired: () => void) {
@@ -73,7 +76,7 @@ export class WorkspaceBrowser {
   }
   owns(caller: ExtensionCaller) { return caller.projectId === this.projectId && caller.sessionId === this.owner?.sessionId }
   acquire(caller: ExtensionSessionCaller): 'ok' | 'busy' | 'waiting-for-user' {
-    if (this.closing) throw new BrowserFault('unavailable')
+    if (this.closeRequested || this.closing) throw new BrowserFault('unavailable')
     if (this.owner && this.owner.sessionId !== caller.sessionId) return 'busy'
     if (this.driver === 'user') {
       if (!this.owner) { this.owner = caller; this.fence = caller.userTurnId; this.epoch++; this.touch(); this.broadcast() }
@@ -86,7 +89,7 @@ export class WorkspaceBrowser {
   resume(caller: ExtensionSessionCaller) {
     if (!this.owner || !this.owns(caller)) throw new BrowserFault('forbidden')
     const latest = this.latestMarkers.get(this.owner.bindingId)
-    if (this.pendingImport || this.driver === 'user' && (!caller.userTurnId || caller.userTurnId === this.fence || latest && caller.userTurnId !== latest)) return { status: 'waiting-for-user' as const }
+    if (this.pendingImport || this.commit || this.closeRequested || this.driver === 'user' && (!caller.userTurnId || caller.userTurnId === this.fence || latest && caller.userTurnId !== latest)) return { status: 'waiting-for-user' as const }
     if (this.driver === 'user') {
       this.owner = caller; this.driver = 'agent'; this.epoch++; this.inputOwner = undefined
       void this.input?.send({ kind: 'release-all' }).catch(() => {})
@@ -96,6 +99,7 @@ export class WorkspaceBrowser {
   }
   handoff(caller?: ExtensionSessionCaller, reason = 'Take control in Browser, then reply in the same Halo chat.') {
     if (caller && !this.owns(caller)) throw new BrowserFault('forbidden')
+    if (this.commit || this.closeRequested) throw new BrowserFault('unavailable')
     if (this.driver !== 'user') {
       this.fence = this.owner ? this.latestMarkers.get(this.owner.bindingId) ?? this.owner.userTurnId : null
       this.driver = 'user'; this.epoch++; this.clearRefs(); this.delivery.mode(true)
@@ -104,7 +108,7 @@ export class WorkspaceBrowser {
     this.touch(); this.broadcast()
   }
   touch() { this.lastActivity = performance.now(); this.scheduleLease(); this.changed() }
-  private get leaseBlocked() { return this.running > 0 || !!this.initialization || this.closing || this.hasViewers && !(this.driver === 'user' && !this.owner) }
+  private get leaseBlocked() { return this.running > 0 || !!this.initialization || !!this.commit || this.closeRequested || this.closing || this.hasViewers && !(this.driver === 'user' && !this.owner) }
   private scheduleLease() {
     clearTimeout(this.leaseTimer)
     if (this.leaseBlocked) return
@@ -262,14 +266,29 @@ export class WorkspaceBrowser {
     this.tail = task.catch(() => {})
     return task
   }
-  async withContext<T>(caller: ExtensionSessionCaller, signal: AbortSignal, work: (context: BrowserContext) => Promise<T>): Promise<T> {
-    await this.ensureContext()
+  async withCommit<T>(caller: ExtensionSessionCaller, signal: AbortSignal, work: (target: SigninCommit) => Promise<T>): Promise<T> {
+    checkSignal(signal)
+    const context = await this.ensureContext()
     return this.serial(async () => {
-      checkSignal(signal)
-      if (!this.owns(caller) || this.closing || this.driver === 'user' && !this.pendingImport) throw new BrowserFault('forbidden')
+      checkSignal(signal); checkSignal(this.life.signal)
+      if (!this.owns(caller) || this.closeRequested || this.closing || !this.pendingImport || context !== this.context) throw new BrowserFault('forbidden')
+      let finish!: () => void; let interrupt!: (error: Error) => void; let active = true
+      const interrupted = new Promise<never>((_, reject) => { interrupt = reject })
+      const guard = { context, done: new Promise<void>(resolve => { finish = resolve }), invalidate: () => { active = false; interrupt(new BrowserFault('unavailable')) } }
+      const validate = () => { if (!active || this.commit !== guard || this.context !== context || this.closing) throw new BrowserFault('unavailable') }
+      const target: SigninCommit = {
+        withContext: async task => {
+          validate(); checkSignal(signal); checkSignal(this.life.signal)
+          const result = await task(context)
+          validate(); checkSignal(signal); checkSignal(this.life.signal); return result
+        },
+        cleanup: async task => { validate(); const result = await task(context); validate(); return result },
+        checkpoint: async () => { validate(); await this.saveCheckpoint(context); validate() },
+      }
+      this.commit = guard
       const timer = setTimeout(() => { void this.close() }, BROWSER_LIMITS.commandTimeoutMs)
-      try { const result = await work(this.context!); checkSignal(signal); checkSignal(this.life.signal); return result }
-      finally { clearTimeout(timer) }
+      try { return await Promise.race([work(target), interrupted]) }
+      finally { clearTimeout(timer); active = false; this.commit = undefined; finish() }
     })
   }
   private page() { const page = this.activeTabId ? this.pages.get(this.activeTabId) : undefined; if (!page) throw new BrowserFault('not-found'); return page }
@@ -360,7 +379,7 @@ export class WorkspaceBrowser {
     }
   }
   private scheduleCheckpoint(dirty = true) {
-    if (this.closing) return
+    if (this.closeRequested || this.closing) return
     this.checkpointDirty ||= dirty
     if (!this.checkpointDirty) return
     // Debounce until interaction settles; movement/releases only defer an already dirty checkpoint.
@@ -371,11 +390,19 @@ export class WorkspaceBrowser {
     }, 500)
   }
   async checkpointNow() {
+    if (this.closeRequested || this.commit) throw new BrowserFault('unavailable')
+    await this.saveCheckpoint(this.context)
+  }
+  private async saveCheckpoint(context: BrowserContext | undefined) {
+    const validate = () => { if (!context || context !== this.context || this.closing) throw new BrowserFault('unavailable') }
+    validate()
     clearTimeout(this.checkpointTimer); this.checkpointTimer = undefined; this.checkpointDirty = false
-    if (!this.context) return
-    await this.store.checkpoint(this.context)
+    await this.store.checkpoint(context!)
+    validate()
     const tabs = await Promise.all([...this.pages.values()].map(async page => ({ url: safeUrl(page.url()), title: (await page.title().catch(() => '')).slice(0, 200) })))
+    validate()
     await this.store.save('tabs.json', { tabs, selected: [...this.pages.keys()].indexOf(this.activeTabId ?? '') })
+    validate()
   }
   private closeTask?: Promise<void>
   close(): Promise<void> {
@@ -383,17 +410,34 @@ export class WorkspaceBrowser {
     return this.closeTask
   }
   private async closeBrowser() {
-    this.closing = true; this.epoch++; this.life.abort()
+    this.closeRequested = true; this.epoch++; this.life.abort()
     clearTimeout(this.leaseTimer); clearTimeout(this.checkpointTimer)
-    this.delivery.close(); for (const viewer of this.viewers.keys()) viewer.close(); this.viewers.clear()
+    const guard = this.commit
+    let forced = false
+    if (guard) {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([guard.done, new Promise<void>(resolve => { timer = setTimeout(() => {
+          forced = true; guard.invalidate(); this.closing = true; this.context = undefined
+          this.runtime = { protocol: 1, status: 'unavailable', reason: 'Browser import cleanup timed out; sign-in state is uncertain.' }
+          this.broadcast({ type: 'runtime', runtime: this.runtime }); killContext(guard.context); resolve()
+        }, BROWSER_LIMITS.commandTimeoutMs) })])
+      } finally { clearTimeout(timer) }
+    }
     await this.initialization?.catch(() => {})
-    // A wedged command must not prevent closing the context/process.
-    const context = this.context
+    // A wedged command must not prevent closing the context/process. Never save tentative cookies after forced teardown.
+    const context = this.context ?? guard?.context
     if (context) {
       const deadline = setTimeout(() => killContext(context), 3000)
-      try { await this.checkpointNow().catch(() => {}); await context.close().catch(() => {}) }
-      finally { clearTimeout(deadline) }
+      try {
+        // The guarded import already persisted commit/undo, or reported uncertainty. Do not checkpoint tentative state again.
+        if (!guard && !forced) await this.saveCheckpoint(context).catch(() => {})
+        this.closing = true
+        await context.close().catch(() => {})
+      } finally { clearTimeout(deadline) }
     }
+    this.closing = true
+    this.delivery.close(); for (const viewer of this.viewers.keys()) viewer.close(); this.viewers.clear()
     this.context = undefined; this.owner = undefined; this.driver = 'idle'; this.clearRefs(); this.changed()
   }
 }

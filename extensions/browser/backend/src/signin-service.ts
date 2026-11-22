@@ -9,12 +9,17 @@ export interface SigninService {
   dispose(): Promise<void>
 }
 
+/** Valid only inside withCommit, bound to its original context; cleanup/checkpoint ignore request abort. */
+export interface SigninCommit {
+  withContext<T>(work: (context: BrowserContext) => Promise<T>): Promise<T>
+  cleanup<T>(work: (context: BrowserContext) => Promise<T>): Promise<T>
+  checkpoint(): Promise<void>
+}
 /** Bound by the backend, never by a caller-supplied operation or profile path. */
 export interface SigninHost {
   caller: ExtensionCaller
   signal: AbortSignal
-  withContext<T>(work: (context: BrowserContext) => Promise<T>): Promise<T>
-  checkpoint(): Promise<void>
+  withCommit<T>(work: (target: SigninCommit) => Promise<T>): Promise<T>
   confirm(notice: ExtensionNotice): Promise<ExtensionNoticeDecision>
 }
 export type SigninServiceFactory = (host: SigninHost) => SigninService

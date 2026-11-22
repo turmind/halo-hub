@@ -25,7 +25,8 @@ function transactionFixture(fail: boolean | 'rollback' = false) {
     return {}
   }, detach: async () => {} }
   const context = { on() {}, off() {}, serviceWorkers: () => [], pages: () => [{ workers: () => [] }], newCDPSession: async () => session, route: async () => {}, unroute: async () => {} } as unknown as BrowserContext
-  return { host: { ...host(), withContext: async <T>(work: (context: BrowserContext) => Promise<T>) => work(context) }, calls, old }
+  const withContext = async <T>(work: (context: BrowserContext) => Promise<T>) => work(context)
+  return { host: { ...host(), withCommit: async <T>(work: (target: import('../signin-service.js').SigninCommit) => Promise<T>) => work({ withContext, cleanup: withContext, checkpoint: async () => {} }) }, calls, old }
 }
 test('partial target failure restores affected keys only, no partition-wide delete, resumes scripts', async () => {
   const f = transactionFixture(true)

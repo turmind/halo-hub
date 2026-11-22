@@ -42,9 +42,7 @@ function target() {
       }
     },
   }) as unknown as BrowserContext
-  const bound: SigninHost = {
-    ...host(), signal: controller.signal,
-    async confirm() { state.notices++; return 'confirm' },
+  const target: import('../signin-service.js').SigninCommit = {
     async withContext(work) {
       if (state.rejectCleanup && controller.signal.aborted) throw new Error(canary)
       const count = ++state.contexts
@@ -52,12 +50,14 @@ function target() {
       await hooks.context(count)
       return result
     },
+    cleanup: work => target.withContext(work),
     async checkpoint() {
       state.persisted = snapshot()
       await hooks.checkpoint(++state.checkpoints)
     },
   }
-  return { host: bound, controller, state, hooks, initial, snapshot, events, close() { state.closed = true; events.emit('close') } }
+  const bound: SigninHost = { ...host(), signal: controller.signal, confirm: async () => { state.notices++; return 'confirm' }, withCommit: work => work(target) }
+  return { host: bound, target, controller, state, hooks, initial, snapshot, events, close() { state.closed = true; events.emit('close') } }
 }
 async function fixture(t: TestContext) {
   const f = await home()
@@ -91,8 +91,8 @@ for (const reject of [false, true]) test(`abort at outer withContext boundary ($
 })
 test('abort after withContext resolves but before checkpoint restores the same context', async t => {
   const f = await fixture(t)
-  const withContext = f.host.withContext
-  f.host.withContext = work => {
+  const withContext = f.target.withContext
+  f.target.withContext = work => {
     const task = withContext(work)
     // This reaction precedes commitCookies' await continuation, after host resolution.
     if (f.state.contexts === 1) void task.then(() => f.controller.abort())
@@ -163,7 +163,7 @@ for (const boundary of ['detach', 'checkpoint', 'undo-checkpoint'] as const) tes
 })
 test('abort before mutation is cancelled without target writes or checkpoint', async t => {
   const f = await fixture(t)
-  f.host.withContext = async () => { f.controller.abort(); throw new Error(canary) }
+  f.target.withContext = async () => { f.controller.abort(); throw new Error(canary) }
   assert.deepEqual(await f.service.import('example.com', undefined), { status: 'cancelled' })
   assert.equal(f.state.sets, 0); assert.equal(f.state.checkpoints, 0); restored(f)
 })

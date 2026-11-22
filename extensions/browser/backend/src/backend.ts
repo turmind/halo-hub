@@ -222,8 +222,7 @@ export class BrowserBackend {
       let service: ReturnType<SigninServiceFactory> | undefined
       try {
         service = this.options.signin({ caller, signal: controller.signal,
-          withContext: work => workspace.withContext(caller, controller.signal, work),
-          checkpoint: () => workspace.serial(() => workspace.checkpointNow()),
+          withCommit: work => workspace.withCommit(caller, controller.signal, work),
           confirm: notice => {
             workspace.pendingImport = true; workspace.handoff(caller)
             operation.operation = { id: request.id, op: request.op, status: 'waiting-for-user' }; workspace.broadcast({ type: 'operation', operation: operation.operation }); operation.wake?.()
@@ -239,7 +238,8 @@ export class BrowserBackend {
       const timeout = setTimeout(() => { controller.abort(); void this.remove(workspace) }, this.options.commandTimeoutMs ?? BROWSER_LIMITS.commandTimeoutMs)
       try { result = await workspace.command(caller, request, controller.signal, operation.epoch) } finally { clearTimeout(timeout) }
     }
-    checkSignal(controller.signal)
+    // The importer owns the commit/undo decision, including a commit that wins a late abort.
+    if (request.op !== 'signin-import') checkSignal(controller.signal)
     // The discriminant remains request.op; each implementation returns its frozen result DTO.
     return { id: request.id, op: request.op, ok: true, result } as BrowserCommandResponse
   }
@@ -257,7 +257,10 @@ export class BrowserBackend {
       const response = await Promise.race([operation.response, pending])
       if (!operation.notified && (response.ok && 'status' in response && response.status === 'running' || operation.operation.status === 'waiting-for-user')) {
         operation.notified = true
-        void operation.response.then(() => { this.hooks.open(operation.caller, operation.workspace.viewId, `Browser operation completed (${operation.operation.id}). Retrieve its result once with operation ${operation.operation.id} in the same chat.`, operation.workspace.life.signal) })
+        void operation.response.then(result => {
+          const outcome = result.op === 'signin-import' && result.ok && 'result' in result ? ` Sign-in: ${result.result.status}${result.result.status === 'unavailable' ? ` — ${result.result.reason}` : ''}.` : ''
+          this.hooks.open(operation.caller, operation.workspace.viewId, `Browser operation completed (${operation.operation.id}).${outcome} Retrieve its result once with operation ${operation.operation.id} in the same chat.`, operation.workspace.life.signal)
+        })
       }
       return response
     } finally { clearTimeout(timer) }
