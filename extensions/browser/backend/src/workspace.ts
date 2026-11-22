@@ -345,16 +345,21 @@ export class WorkspaceBrowser {
         case 'screenshot': {
           const page = this.page(); const deadline = performance.now() + 10000
           const remaining = () => { const ms = deadline - performance.now(); if (ms <= 0) throw new BrowserFault('operation-failed'); return ms }
+          const withinBudget = async <T>(work: () => Promise<T>): Promise<T> => {
+            const ms = remaining(); let timer: ReturnType<typeof setTimeout> | undefined
+            try { return await Promise.race([work(), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new BrowserFault('operation-failed')), ms) })]) }
+            finally { clearTimeout(timer) }
+          }
           let data: Buffer
-          try { data = await page.screenshot({ type: 'png', timeout: remaining() }) }
+          try { data = await withinBudget(() => page.screenshot({ type: 'png', timeout: remaining() })) }
           catch (error) {
             if (!(error instanceof Error) || error.message.split('\n')[0] !== 'page.screenshot: Protocol error (Page.captureScreenshot): Unable to capture screenshot') throw error
             // Chromium 149 returns this for an empty surface copy, not encoding/delivery failure.
             // Until Chromium fixes surface readiness, retry once after foreground + visible paint, within the same budget.
-            fence(); await page.bringToFront()
-            const visible = await page.waitForFunction(() => document.visibilityState === 'visible' && new Promise<boolean>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(document.visibilityState === 'visible')))), undefined, { timeout: remaining() })
-            await visible.dispose(); fence()
-            data = await page.screenshot({ type: 'png', timeout: remaining() })
+            fence(); await withinBudget(() => page.bringToFront())
+            const visible = await withinBudget(() => page.waitForFunction(() => document.visibilityState === 'visible' && new Promise<boolean>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(document.visibilityState === 'visible')))), undefined, { timeout: remaining() }))
+            try { fence(); data = await withinBudget(() => page.screenshot({ type: 'png', timeout: remaining() })) }
+            finally { await withinBudget(() => visible.dispose()).catch(() => {}) }
           }
           fence()
           if (data.length > BROWSER_LIMITS.screenshotBytes) throw new BrowserFault('unavailable')

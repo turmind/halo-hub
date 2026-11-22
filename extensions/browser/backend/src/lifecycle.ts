@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import type { BrowserContext } from 'playwright'
 
 const browserPids = new Set<number>()
@@ -20,14 +20,18 @@ export async function trackBrowser(context: BrowserContext) {
   if (!installed) { installed = true; process.once('exit', killOwnedBrowsers) }
 }
 function killPid(pid: number) {
+  if (!browserPids.delete(pid)) return
   try {
-    if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore', timeout: 3000 })
-    else process.kill(-pid, 'SIGKILL')
+    if (process.platform === 'win32') {
+      // Spawn starts taskkill even in an exit handler; detached cleanup must not block the shutdown budget.
+      const child = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore', detached: true, windowsHide: true })
+      child.on('error', () => { /* The browser may already have exited; cleanup is best-effort. */ }); child.unref()
+    } else process.kill(-pid, 'SIGKILL')
   } catch { /* A browser may already have exited. Never target an unowned process. */ }
 }
 export function killContext(context: BrowserContext) {
   const pid = contextPids.get(context)
-  if (pid && browserPids.has(pid)) killPid(pid)
+  if (pid) killPid(pid)
 }
 export function trackChildProcess(pid: number): () => void {
   browserPids.add(pid)
@@ -36,5 +40,4 @@ export function trackChildProcess(pid: number): () => void {
 }
 export function killOwnedBrowsers() {
   for (const pid of browserPids) killPid(pid)
-  browserPids.clear()
 }
