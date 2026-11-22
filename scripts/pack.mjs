@@ -39,7 +39,6 @@ if (process.argv[3] && !perPlatform && !singlePlatform) throw new Error('usage: 
 const BUILDERS = {
   'voice-input': (platform) => execFileSync(resolve('shared/stt-backend/build.sh'), [dir, platform], { stdio: 'inherit' }),
   htrans: (platform) => execFileSync(resolve('shared/stt-backend/build.sh'), [dir, platform], { stdio: 'inherit' }),
-  browser: (platform) => execFileSync(process.execPath, [resolve(dir, 'build.mjs'), '--platform', platform], { stdio: 'inherit' }),
 };
 
 if (basename(dir) === 'models' && !existsSync(`${dir}/halo-extension.json`)) packModels();
