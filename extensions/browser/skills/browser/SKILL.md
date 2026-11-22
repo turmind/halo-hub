@@ -24,7 +24,7 @@ Requires the enabled extension skill and confirmed backend in a full-access Halo
 - `tabs` / `select-tab <id>` — tabs share the workspace profile.
 - `handoff [reason]` — returns `waiting-for-user`. Tell the user to take control in Browser Canvas, then **end this turn**. No waiting shell or polling loop.
 - `signin-sources <site>` — metadata only from the server machine; no cookie names/values. Available is not proof of authentication.
-- `signin-import <site> [--from <source-id>]` — user-consented copy from one source, never merged accounts. `imported` is not proof of sign-in. If unavailable, offer sign-in in Canvas.
+- `signin-import <site> [--from <source-id>]` — user-consented copy from one source, never merged accounts. `imported` is not proof of sign-in. If unavailable, offer sign-in in Canvas. After `cancelled` or `unavailable`, retry only if the user explicitly requests it; first resume after their new chat reply. Never automatically retry or repeat an imported result.
 - `resume` — internal `control.resume`, **only after you interpret a new human reply in this exact Halo chat** as permission to continue. The backend requires a newer human-input marker and no pending import approval. It cannot infer what “done” means. Do not auto-resume on a notice result.
 - `status` — redacted runtime state; allowed while user controls the browser.
 - `operation <id>` — one-shot retrieval after a pushed completion/new chat turn. Never poll. `running` returns the operation ID; don't repeat the original mutation under a new ID.

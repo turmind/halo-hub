@@ -23,9 +23,9 @@ Discovery descriptors cover Chrome stable/Beta/Dev/Canary; Edge equivalents; Bra
 - Target lock pauses existing page scripts and aborts in-flight/new routed requests during the short cookie write. Active page/service workers are refused because page pause/context routing cannot pause their network. This is not a fully transactional browser; abrupt crash and new/background worker races are not claimed impossible.
 - Exact `(name,domain,path,partition site,ancestor)` keys only; no-op writes skipped. On partial failure overwrite old keys and expire newly-created exact keys. Never broad `deleteCookies` without a partition key (it can delete partitioned siblings). Rollback/checkpoint failure reports state uncertain. Imported session cookies are checkpointed through D, no second journal/temp export.
 
-## Integration requests (outside F scope)
+## Production integration
 
-D `backend/src/index.ts` needs:
+D `backend/src/index.ts` now wires:
 
 ```ts
 import { createSigninService } from './signin-import/index.js'
@@ -33,7 +33,7 @@ import { createSigninService } from './signin-import/index.js'
 signin: createSigninService
 ```
 
-No dependency/lock/script changes requested: locked `tldts`, `@homebridge/dbus-native`, Playwright and Node 22 SQLite suffice. D currently caches same `signin-import` args until operation expiry even for cancelled/unavailable outcomes; an explicit retry with identical args needs D to permit a new operation after those terminal outcomes (not auto-retry, and not replay a successful import). F's service is deliberately operation-scoped and cannot change that cache.
+No dependency/lock changes required: locked `tldts`, `@homebridge/dbus-native`, Playwright and Node 22 SQLite suffice. D releases the import-scope deduplication only for cancelled/unavailable outcomes, permitting an explicitly requested retry with a new request ID after normal newer-human resume. Same-ID requests keep their original result; pending/successful imports remain scope-deduplicated. There is no automatic retry or replay of a successful import. F's service remains operation-scoped; D owns this cache.
 
 E packaging: **no compiled bridge/native outputs**. Bundle this module with the backend; the SQLite worker is self-contained `Worker(..., {eval:true})` JavaScript so it survives CJS bundling without a worker file. Leave `node:*` external. Ship the existing `@homebridge/dbus-native` dependency and transitive JS data/assets via the existing production dependency staging; do not attempt to bundle its optional native abstract-socket transport. System `security` / PowerShell are prerequisites, not zip assets. Exclude `*.test.ts`, `fixtures.ts` and this developer document from runtime zips. No source profiles or temporary DB copies ever become build inputs.
 
@@ -47,7 +47,11 @@ npm --prefix extensions/browser run test:signin
 npm --prefix extensions/browser run test:backend
 ```
 
-33 sign-in tests pass (0 failures), strict tsc exit 0. D's 19 existing backend tests passed initially; subsequent concurrent runs produced 18/19 with `deadlines.test.ts` “No completion notice” (100 ms command deadline under competing Chromium launches). That file alone passed 4/4; all 19 passed with `node --import tsx --test --test-concurrency=1 test/backend/*.test.ts`. This test never imports F, and D's files were not changed. Keep the concurrency-sensitive regression visible rather than calling every run green. Linux end-to-end creates a real manufactured Chromium profile, closes it, makes its cookie DB read-only, imports **4** scoped cookies through real BrowserBackend private HTTP and hook-2 IPC, checks an unrelated source is excluded/an unrelated target retained, closes/restarts backend, proves session-cookie authentication plus both partition ancestor bits restored. Repeated under bwrap read-only root/private tmp. Never uses real profiles/accounts. Process cleanup checked after tests.
+Initial F verification: 33 sign-in tests passed, strict tsc exit 0. Concurrent backend runs exposed `deadlines.test.ts` “No completion notice”: its 100 ms `commandTimeoutMs` override shortened both the response wait and real command execution, so slow navigation/checkpoint closed the workspace and revoked notices. Integration fixes the test with a deferred launch and mocked response timer, restoring real timers before Chromium runs under the unchanged production 30-second execution budget. No production timeout increase or reduced test concurrency is needed. Backend retry coverage adds cancelled/unavailable cases; the extracted-package test now exercises production source discovery and the bundled SQLite worker.
+
+Integration verification: strict tsc exit 0; scoped backend **21/21**, viewer **10/10**, pack **6/6**, sign-in **33/33**. Two combined runs using Node's default test concurrency passed **70/70** each (24.44 s and 23.73 s), with zero failures/skips/cancellations and zero remaining task processes. The pinned Halo snapshot is `91f1b00d9da458cb8be11667715223826423cea3`.
+
+Linux end-to-end creates a real manufactured Chromium profile, closes it, makes its cookie DB read-only, imports **4** scoped cookies through real BrowserBackend private HTTP and hook-2 IPC, checks an unrelated source is excluded/an unrelated target retained, closes/restarts backend, proves session-cookie authentication plus both partition ancestor bits restored. Initial F verification repeated this under bwrap read-only root/private tmp. Never uses real profiles/accounts. Process cleanup checked after tests.
 
 Mac/Windows real hardware still required: actual channel/key service pairs, app-data/FDA access, Keychain grant/deny/locked/headless behavior and all-prompts launch, PowerShell policy/DPAPI and live-store sharing locks, MSIX roots, app-bound refusal, packaged launch. Linux real desktop Secret Service compatibility (including KWallet's Secret Service implementation) remains a hardware/session gate. Safari import and Firefox container/partition conversion are explicitly not implemented without faithful-format fixtures.
 
