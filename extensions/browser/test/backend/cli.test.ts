@@ -29,3 +29,26 @@ test('CLI no credentials in success, HTTP errors, malformed map or unavailable e
     assert.equal((await cli(['--help'], {})).code, 0)
   } finally { await new Promise<void>(resolve => server.close(() => resolve())) }
 })
+
+test('CLI preserves a pending import id and retrieves its result with one operation request', async () => {
+  const paths: string[] = []; let id = ''
+  const server = createServer(async (req, res) => {
+    paths.push(req.url!)
+    res.setHeader('content-type', 'application/json')
+    if (req.method === 'POST') {
+      let body = ''; for await (const chunk of req) body += chunk
+      id = JSON.parse(body).id
+      res.end(JSON.stringify({ id, op: 'signin-import', ok: true, result: { status: 'waiting-for-user' } }))
+    } else res.end(JSON.stringify({ id, status: 'completed', response: { id, op: 'signin-import', ok: true, result: { status: 'cancelled' } } }))
+  })
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+  try {
+    const address = server.address(); assert.ok(address && typeof address !== 'string')
+    const env = { HALO_EXT_BACKENDS: JSON.stringify({ browser: { url: `http://127.0.0.1:${address.port}/api/ext/browser`, accessKey: 'manufactured-key', expiresAt: new Date(Date.now() + 60000).toISOString() } }) }
+    const pending = await cli(['signin-import', 'example.com'], env)
+    assert.equal(pending.code, 0); assert.deepEqual(JSON.parse(pending.output), { status: 'waiting-for-user', id })
+    const result = await cli(['operation', id], env)
+    assert.equal(result.code, 0); assert.equal(JSON.parse(result.output).response.result.status, 'cancelled')
+    assert.deepEqual(paths, ['/api/ext/browser/command', '/api/ext/browser/operations/' + id])
+  } finally { await new Promise<void>(resolve => server.close(() => resolve())) }
+})

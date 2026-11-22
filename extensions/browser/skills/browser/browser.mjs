@@ -69,7 +69,9 @@ async function main() {
     try { return JSON.parse(bytes.toString('utf8')) } catch { fail('Invalid browser response.') }
   }
   const response = command === 'status' ? await request('/status') : command === 'operation' ? await request('/operations/' + args[0]) : await request('/command', { id: randomUUID(), op, args: payload })
-  let output = response.ok === true && 'result' in response ? response.result : response
+  let output = response.ok === true && 'result' in response
+    ? response.result?.status === 'waiting-for-user' ? { ...response.result, id: response.id } : response.result
+    : response
   if (file && response.ok && response.result?.artifactId) {
     const bytes = await request('/artifacts/' + encodeURIComponent(response.result.artifactId), undefined, true)
     await mkdir(dirname(file), { recursive: true })

@@ -39,6 +39,7 @@ export class WorkspaceBrowser {
   private tail: Promise<unknown> = Promise.resolve()
   private leaseTimer?: ReturnType<typeof setTimeout>
   private checkpointTimer?: ReturnType<typeof setTimeout>
+  private checkpointDirty = false
   private snapshotId = ''
   private refs = new Map<string, ElementHandle>()
   private artifacts = new Map<string, { sessionId: string; expires: number; file: string }>()
@@ -74,7 +75,10 @@ export class WorkspaceBrowser {
   acquire(caller: ExtensionSessionCaller): 'ok' | 'busy' | 'waiting-for-user' {
     if (this.closing) throw new BrowserFault('unavailable')
     if (this.owner && this.owner.sessionId !== caller.sessionId) return 'busy'
-    if (this.driver === 'user') return 'waiting-for-user'
+    if (this.driver === 'user') {
+      if (!this.owner) { this.owner = caller; this.fence = caller.userTurnId; this.epoch++; this.touch(); this.broadcast() }
+      return 'waiting-for-user'
+    }
     if (!this.owner) { this.owner = caller; this.driver = 'agent'; this.epoch++; this.broadcast() }
     else this.owner = caller
     this.touch(); return 'ok'
@@ -100,12 +104,14 @@ export class WorkspaceBrowser {
     this.touch(); this.broadcast()
   }
   touch() { this.lastActivity = performance.now(); this.scheduleLease(); this.changed() }
+  private get leaseBlocked() { return this.running > 0 || !!this.initialization || this.closing || this.hasViewers && !(this.driver === 'user' && !this.owner) }
   private scheduleLease() {
     clearTimeout(this.leaseTimer)
-    if (this.hasViewers || this.running > 0 || this.closing) return
-    const ttl = this.driver === 'user' ? BROWSER_LIMITS.handoffTimeoutMs : BROWSER_LIMITS.idleLeaseMs
-    this.leaseTimer = setTimeout(() => { this.expired() }, Math.max(0, ttl - (performance.now() - this.lastActivity)))
+    if (this.leaseBlocked) return
+    const ttl = this.driver === 'user' && this.owner ? BROWSER_LIMITS.handoffTimeoutMs : BROWSER_LIMITS.idleLeaseMs
+    this.leaseTimer = setTimeout(() => { if (!this.leaseBlocked) this.expired() }, Math.max(0, ttl - (performance.now() - this.lastActivity)))
   }
+  activityStarted() { this.running++; this.scheduleLease(); this.changed() }
   activityEnded() { this.scheduleLease(); this.changed() }
   async ensureContext(): Promise<BrowserContext> {
     checkSignal(this.life.signal)
@@ -122,7 +128,20 @@ export class WorkspaceBrowser {
         this.context = context
         for (const page of context.pages()) this.registerPage(page)
         context.on('page', page => { this.registerPage(page); this.broadcast() })
-        context.on('response', response => { if (response.headers()['set-cookie']) this.scheduleCheckpoint() })
+        context.on('response', response => {
+          // headers() omits Set-Cookie. Inspect presence only; never retain/log its value.
+          void response.headerValue('set-cookie').then(value => { if (value !== null) this.scheduleCheckpoint() }).catch(() => {})
+        })
+        const lost = () => {
+          if (this.closing || this.context !== context) return
+          // CDP is gone: retain the last durable checkpoint rather than overwrite it with empty state.
+          this.context = undefined; this.epoch++; this.life.abort(); this.clearRefs()
+          this.runtime = { protocol: 1, status: 'unavailable', reason: 'Browser closed. Open Browser again to restart it.' }
+          this.broadcast({ type: 'runtime', runtime: this.runtime }); this.expired()
+        }
+        const browser = context.browser()
+        context.once('close', () => { browser?.off('disconnected', lost); lost() })
+        browser?.once('disconnected', lost)
         const saved = await this.store.tabs()
         for (let i = 0; i < saved.urls.length; i++) {
           const page = i === 0 ? context.pages()[0] ?? await context.newPage() : await context.newPage()
@@ -138,8 +157,8 @@ export class WorkspaceBrowser {
     })().catch(error => {
       this.runtime = { protocol: 1, status: 'unavailable', reason: 'Browser launch failed. Install the Playwright Chromium shared-library prerequisites on the Halo server; no administrator install is performed.' }
       this.broadcast({ type: 'runtime', runtime: this.runtime }); throw error
-    }).finally(() => { clearTimeout(deadline); this.initialization = undefined; this.changed() })
-    this.changed()
+    }).finally(() => { clearTimeout(deadline); this.initialization = undefined; this.activityEnded() })
+    this.scheduleLease(); this.changed()
     return this.initialization
   }
   private registerPage(page: Page) {
@@ -197,6 +216,7 @@ export class WorkspaceBrowser {
   }
   async detach(viewer: Viewer) {
     this.delivery.remove(viewer); this.viewers.delete(viewer)
+    if (!this.viewers.size && !this.owner && this.driver === 'user') { this.driver = 'idle'; this.fence = null; this.epoch++; this.delivery.mode(false) }
     if (this.inputOwner === viewer) { this.inputOwner = undefined; await this.serial(() => this.input?.send({ kind: 'release-all' }) ?? Promise.resolve()).catch(() => {}) }
     await this.serial(() => this.captureState()).catch(() => {})
     this.activityEnded(); this.broadcast()
@@ -231,7 +251,8 @@ export class WorkspaceBrowser {
           else if (event) await this.input?.send(event)
           else throw new BrowserFault('invalid-request')
         })
-        this.scheduleCheckpoint()
+        const meaningful = frame.type === 'select-tab' || event?.kind === 'text' || event?.kind === 'wheel' || (event?.kind === 'pointer' || event?.kind === 'key') && event.event === 'down'
+        if (meaningful || this.checkpointDirty) this.scheduleCheckpoint(meaningful)
       }
     }
     this.touch(); this.broadcast()
@@ -338,14 +359,19 @@ export class WorkspaceBrowser {
       if ((await stat(file)).mtimeMs + 5 * 60 * 1000 <= Date.now()) { await rm(file, { force: true }); this.artifacts.delete(name.slice(0, -4)) }
     }
   }
-  private scheduleCheckpoint() {
-    if (this.checkpointTimer || this.closing) return
+  private scheduleCheckpoint(dirty = true) {
+    if (this.closing) return
+    this.checkpointDirty ||= dirty
+    if (!this.checkpointDirty) return
+    // Debounce until interaction settles; movement/releases only defer an already dirty checkpoint.
+    clearTimeout(this.checkpointTimer)
     this.checkpointTimer = setTimeout(() => {
       this.checkpointTimer = undefined
-      void this.serial(() => this.checkpointNow()).catch(() => { this.broadcast({ type: 'error', error: { code: 'operation-failed', message: 'Browser checkpoint failed; changes may not survive restart.' } }) })
+      void this.serial(async () => { if (this.checkpointDirty && !this.checkpointTimer) await this.checkpointNow() }).catch(() => { this.broadcast({ type: 'error', error: { code: 'operation-failed', message: 'Browser checkpoint failed; changes may not survive restart.' } }) })
     }, 500)
   }
   async checkpointNow() {
+    clearTimeout(this.checkpointTimer); this.checkpointTimer = undefined; this.checkpointDirty = false
     if (!this.context) return
     await this.store.checkpoint(this.context)
     const tabs = await Promise.all([...this.pages.values()].map(async page => ({ url: safeUrl(page.url()), title: (await page.title().catch(() => '')).slice(0, 200) })))

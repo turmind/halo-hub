@@ -11,6 +11,7 @@ import { BrowserFault, checkSignal, publicError } from './errors.js'
 import { callerFrom, commandFrom, opaque } from './validation.js'
 import type { SigninServiceFactory } from './signin-service.js'
 import { privateDirectory } from './profile-store.js'
+import { siteScope } from './signin-import/site-scope.js'
 
 interface Operation {
   caller: ExtensionSessionCaller; hash: string; controller: AbortController; operation: BrowserOperation
@@ -165,9 +166,15 @@ export class BrowserBackend {
     const previous = this.workspaces.get(caller.projectId)
     if (previous) await this.removals.get(previous)
     const workspace = this.workspace(caller)
+    const hash = createHash('sha256').update(JSON.stringify(request)).digest('hex')
+    const key = this.operationKey(caller, request.id)
+    const existing = this.operations.get(key)
+    if (existing && existing.hash !== hash) throw new BrowserFault('invalid-request')
+    let importScope: string | undefined
     if (request.op === 'signin-import') {
-      const scope = JSON.stringify(request.args)
-      const prior = [...this.operations.values()].find(entry => entry.workspace === workspace && entry.caller.sessionId === caller.sessionId && entry.importScope === scope && entry.expires > Date.now())
+      try { importScope = JSON.stringify([siteScope(request.args.site).host, request.args.from ?? null]) }
+      catch { throw new BrowserFault('invalid-request') }
+      const prior = [...this.operations.values()].find(entry => entry.workspace === workspace && entry.caller.sessionId === caller.sessionId && entry.importScope === importScope && entry.expires > Date.now())
       if (prior) {
         if (prior.operation.status === 'completed' && caller.userTurnId === prior.caller.userTurnId && workspace.driver === 'user') return { id: prior.operation.id, op: 'signin-import', ok: true, result: { status: 'waiting-for-user' } }
         return this.wait(prior, { ...request, id: prior.operation.id })
@@ -176,20 +183,14 @@ export class BrowserBackend {
     const blocked = request.op === 'control.resume' ? workspace.owner && workspace.owner.sessionId !== caller.sessionId ? 'busy' : undefined : workspace.acquire(caller)
     if (blocked === 'busy') return { id: request.id, op: request.op, ok: false, status: 'busy', ownerSessionId: workspace.owner!.sessionId }
     if (blocked === 'waiting-for-user') return { id: request.id, op: request.op, ok: false, status: 'waiting-for-user' }
-    const hash = createHash('sha256').update(JSON.stringify(request)).digest('hex')
-    const key = this.operationKey(caller, request.id)
-    const existing = this.operations.get(key)
-    if (existing) {
-      if (existing.hash !== hash) throw new BrowserFault('invalid-request')
-      return this.wait(existing, request)
-    }
+    if (existing) return this.wait(existing, request)
     if (this.operations.size >= 1024 || workspace.running >= 16) throw new BrowserFault('unavailable')
     const controller = new AbortController()
     const abort = () => controller.abort()
     workspace.life.signal.addEventListener('abort', abort, { once: true })
-    const operation: Operation = { caller, hash, controller, workspace, epoch: workspace.revision, importScope: request.op === 'signin-import' ? JSON.stringify(request.args) : undefined, operation: { id: request.id, op: request.op, status: 'running' }, response: Promise.resolve({ id: request.id, op: request.op, ok: true, status: 'running' }), expires: Date.now() + BROWSER_LIMITS.handoffTimeoutMs }
+    const operation: Operation = { caller, hash, controller, workspace, epoch: workspace.revision, importScope, operation: { id: request.id, op: request.op, status: 'running' }, response: Promise.resolve({ id: request.id, op: request.op, ok: true, status: 'running' }), expires: Date.now() + BROWSER_LIMITS.handoffTimeoutMs }
     this.operations.set(key, operation); this.scheduleExpiry()
-    workspace.running++; this.busy()
+    workspace.activityStarted()
     const deadline = setTimeout(() => { controller.abort(); void this.remove(workspace) }, BROWSER_LIMITS.handoffTimeoutMs)
     operation.response = this.execute(operation, request).then(response => {
       // Terminal non-imports may be explicitly retried with a new request ID after
@@ -256,7 +257,7 @@ export class BrowserBackend {
       const response = await Promise.race([operation.response, pending])
       if (!operation.notified && (response.ok && 'status' in response && response.status === 'running' || operation.operation.status === 'waiting-for-user')) {
         operation.notified = true
-        void operation.response.then(() => { this.hooks.open(operation.caller, operation.workspace.viewId, 'Browser operation completed. Retrieve its result in the same chat.', operation.workspace.life.signal) })
+        void operation.response.then(() => { this.hooks.open(operation.caller, operation.workspace.viewId, `Browser operation completed (${operation.operation.id}). Retrieve its result once with operation ${operation.operation.id} in the same chat.`, operation.workspace.life.signal) })
       }
       return response
     } finally { clearTimeout(timer) }

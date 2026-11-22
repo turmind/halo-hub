@@ -39,3 +39,30 @@ for (const outcome of ['cancelled', 'unavailable'] as const) test(`explicit retr
     assert.equal(imports, 2)
   } finally { await backend.close(); await rm(directory, { recursive: true, force: true }) }
 })
+
+test('equivalent site spellings deduplicate pending and successful imports but not distinct sources', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'browser-signin-scope-'))
+  let imports = 0; let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const backend = new BrowserBackend({ dataDir: directory, send: () => {}, commandTimeoutMs: 10, signin: () => ({
+    sources: async () => [], dispose: async () => {},
+    import: async () => { imports++; await gate; return { status: 'imported', count: 1, from: { id: 'fixture', browser: 'Fixture', profile: 'Manufactured' } } },
+  }) })
+  try {
+    const caller = session()
+    const request = { id: 'canonical', op: 'signin-import' as const, args: { site: 'example.com', from: 'one' } }
+    const pending = await backend.command(caller, request)
+    assert.equal(pending.id, 'canonical')
+    const equivalent = { id: 'equivalent', op: 'signin-import' as const, args: { site: 'https://EXAMPLE.com/path', from: 'one' } }
+    assert.equal((await backend.command(caller, equivalent)).id, 'canonical'); assert.equal(imports, 1)
+    release()
+    const newer = session('one', caller.projectId, 'turn2')
+    const completed = await backend.command(newer, request)
+    assert.ok(completed.ok && 'result' in completed && 'status' in completed.result && completed.result.status === 'imported')
+    assert.deepEqual(await backend.command(newer, equivalent), completed); assert.equal(imports, 1)
+    await assert.rejects(backend.command(newer, { ...equivalent, id: request.id }), /Invalid/)
+    await backend.command(newer, { id: 'resume', op: 'control.resume', args: {} })
+    await backend.command(newer, { ...equivalent, id: 'different-source', args: { ...equivalent.args, from: 'two' } })
+    assert.equal(imports, 2)
+  } finally { release(); await backend.close(); await rm(directory, { recursive: true, force: true }) }
+})

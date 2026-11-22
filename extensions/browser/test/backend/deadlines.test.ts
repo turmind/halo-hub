@@ -95,6 +95,7 @@ test('injected sign-in confirmation blocks resume, accepts one bound answer and 
     await sleep(20)
     const operation = await http(join(directory, 'socket'), session('one', a.projectId, 'turn2'), '/operations/import')
     assert.equal(operation.body.response.result.status, 'imported'); assert.equal(copies, 1); assert.equal(disposed, 1)
+    assert.ok(messages.some(message => (message as any).notice?.message.includes('operation import')))
     const repeat = await backend.command(session('one', a.projectId, 'turn2'), { ...request, id: 'same-import-new-turn' })
     assert.equal(repeat.ok && 'result' in repeat && !Array.isArray(repeat.result) && 'status' in repeat.result && repeat.result.status, 'imported')
     assert.equal(copies, 1)
