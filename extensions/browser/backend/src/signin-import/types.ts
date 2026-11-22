@@ -33,6 +33,7 @@ export const reasons = {
   wallet: 'The desktop keyring is unavailable or locked for this Halo server user. Sign in inside Browser Canvas.',
   scope: 'This profile is outside the standard browser locations supported by this version.',
   activeWorkers: 'This target has active background workers. Close those tabs or sign in inside Browser Canvas before importing.',
+  cancelled: 'Import cancelled before mutation or after confirmed rollback and checkpoint.',
   target: 'Import failed; affected cookies were restored. No unrelated cookies were cleared.',
   uncertain: 'Import or checkpoint failed and target state is uncertain. Inspect Browser Canvas before continuing.',
 } as const
