@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { build } from 'esbuild';
 import { cp, mkdir, readFile, rm, access } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
@@ -9,14 +9,11 @@ import { execFileSync } from 'node:child_process';
 const root = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const option = name => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
-if (args.some((arg, i) => i % 2 === 0 && !['--platform', '--native-dir'].includes(arg)) || args.length % 2) throw new Error('usage: build.mjs [--platform <os-arch>] [--native-dir <platform outputs>]');
+if (args.some((arg, i) => i % 2 === 0 && arg !== '--platform') || args.length % 2) throw new Error('usage: build.mjs [--platform <os-arch>]');
 const platform = option('--platform') ?? `${process.platform === 'win32' ? 'win' : process.platform}-${process.arch}`;
 if (!['linux-x64', 'linux-arm64', 'darwin-arm64', 'darwin-x64', 'win-x64'].includes(platform)) throw new Error(`Unsupported platform: ${platform}`);
-// F can supply its compiled, platform-specific runtime files here; never copy native source/fixtures.
-const nativeDir = option('--native-dir') ? resolve(option('--native-dir')) : join(root, 'backend/src/signin-import/native/dist', platform);
-const hasNative = await access(nativeDir).then(() => true, () => false);
-if (option('--native-dir') && !hasNative) throw new Error('Native output directory does not exist');
-if (platform !== 'linux-x64' && !hasNative) throw new Error(`Platform ${platform} is gated on F native outputs and native acceptance; supply --native-dir after verification.`);
+// Sign-in uses bundled JS plus OS security/PowerShell/D-Bus tools, not compiled
+// bridges. The Playwright JS driver uses Halo's Node; browser downloads occur on target.
 const stage = join(root, '.staging/build');
 await rm(stage, { recursive: true, force: true });
 await mkdir(join(stage, 'backend/node_modules'), { recursive: true });
@@ -54,11 +51,10 @@ async function copyDependency(name, from) {
   // Playwright's optional fsevents is macOS-only and not needed for browser automation.
 }
 for (const name of Object.keys(pkg.dependencies)) await copyDependency(name, root);
-if (hasNative) await cp(nativeDir, join(stage, 'backend/native'), { recursive: true, dereference: true });
 // Only disposable outputs are replaced. In particular, never remove backend/ (it owns backend/src).
 for (const output of ['node_modules', 'native', 'index.cjs']) {
   await rm(join(root, 'backend', output), { recursive: true, force: true });
   const source = join(stage, 'backend', output);
   if (await access(source).then(() => true, () => false)) await cp(source, join(root, 'backend', output), { recursive: true });
 }
-console.log(`[BrowserBuild] ${platform}: viewer + backend + ${copied.size} runtime packages${hasNative ? ' + native outputs' : ' (sign-in integration pending F)'}`);
+console.log(`[BrowserBuild] ${platform}: viewer + backend + ${copied.size} runtime packages + OS-tool sign-in`);

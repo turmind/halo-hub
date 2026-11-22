@@ -1,13 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync, fork, spawnSync } from 'node:child_process'
-import { mkdtemp, mkdir, readFile, writeFile, rm, cp, chmod } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, rm, cp, chmod, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { request } from 'node:http'
 import { once } from 'node:events'
+import { chromiumStore } from '../../backend/src/signin-import/fixtures.js'
+import { http, session } from '../backend/fixtures.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const hub = resolve(root, '../..')
@@ -28,8 +30,18 @@ async function fixture(t: { after: (fn: () => Promise<void>) => void }, id = 'br
   return { temp, ext, run: (args: string[] = []) => execFileSync(process.execPath, [pack, ext, ...args], { cwd: temp, encoding: 'utf8' }) }
 }
 
+async function buildFixture(t: { after: (fn: () => Promise<void>) => void }) {
+  const f = await fixture(t)
+  // Builds replace shared outputs; isolate pack builds from the concurrently running viewer suite.
+  for (const file of ['build.mjs', 'package.json', 'halo-extension.json', 'index.html', 'icon.svg', 'README.md', 'src', 'contracts', 'skills', 'backend/src']) await cp(join(root, file), join(f.ext, file), { recursive: true })
+  await symlink(join(root, 'node_modules'), join(f.ext, 'node_modules'), 'dir')
+  return f
+}
+
 test('explicit browser dispatch, single-platform metadata, source preservation and ZIP allowlist', async t => {
   const f = await fixture(t)
+  await mkdir(join(f.ext, 'backend/native'), { recursive: true })
+  await writeFile(join(f.ext, 'backend/native/stale-fixture'), 'exclude obsolete outputs')
   f.run(['--platform', 'linux-x64'])
   assert.equal(await readFile(join(f.temp, 'calls'), 'utf8'), '["--platform","linux-x64"]\n')
   assert.equal(await readFile(join(f.ext, 'backend/src/keep.ts'), 'utf8'), 'fixture')
@@ -37,7 +49,7 @@ test('explicit browser dispatch, single-platform metadata, source preservation a
   const names = execFileSync('unzip', ['-Z1', zip], { encoding: 'utf8' }).trim().split('\n')
   assert.ok(names.includes('backend/index.cjs')); assert.ok(names.includes('backend/node_modules/example/index.js'))
   assert.ok(names.includes('skills/browser/SKILL.md')); assert.ok(names.includes('dist/viewer.js'))
-  assert.ok(!names.some(name => /^(src|test|contracts|\.staging|backend\/src)\//.test(name) || name === 'build.mjs'))
+  assert.ok(!names.some(name => /^(src|test|contracts|\.staging|backend\/(src|native))\//.test(name) || name === 'build.mjs'))
   const update = JSON.parse(await readFile(join(f.temp, 'dist/browser-1.0.0.update.json'), 'utf8'))
   assert.equal(update.minHalo, '2.4.0'); assert.deepEqual(Object.keys(update.packages), ['linux-x64'])
   assert.equal(update.sha256, createHash('sha256').update(await readFile(zip)).digest('hex'))
@@ -85,11 +97,10 @@ test('canvas manifest rules mirror Halo validation and required empty extensions
 })
 
 test('real linux build and isolated extracted backend boot without development dependencies', { timeout: 60000 }, async t => {
-  const f = await fixture(t)
-  const before = createHash('sha256').update(await readFile(join(root, 'backend/src/index.ts'))).digest('hex')
-  execFileSync(process.execPath, ['build.mjs', '--platform', 'linux-x64'], { cwd: root, stdio: 'pipe' })
-  assert.equal(createHash('sha256').update(await readFile(join(root, 'backend/src/index.ts'))).digest('hex'), before)
-  for (const file of ['halo-extension.json', 'index.html', 'icon.svg', 'README.md', 'dist', 'skills', 'backend/index.cjs', 'backend/node_modules']) await cp(join(root, file), join(f.ext, file), { recursive: true })
+  const f = await buildFixture(t)
+  const before = createHash('sha256').update(await readFile(join(f.ext, 'backend/src/index.ts'))).digest('hex')
+  execFileSync(process.execPath, ['build.mjs', '--platform', 'linux-x64'], { cwd: f.ext, stdio: 'pipe' })
+  assert.equal(createHash('sha256').update(await readFile(join(f.ext, 'backend/src/index.ts'))).digest('hex'), before)
   f.run()
   const extracted = join(f.temp, 'extracted'); await mkdir(extracted)
   execFileSync('unzip', ['-q', join(f.temp, 'dist/browser-1.0.0.zip'), '-d', extracted])
@@ -98,7 +109,9 @@ test('real linux build and isolated extracted backend boot without development d
   const css = await readFile(join(extracted, 'dist/viewer.css'), 'utf8')
   assert.ok(!css.includes('@import')); assert.ok(css.includes('--halo-background'))
   const socket = join(f.temp, 'pack.sock')
-  const child = fork(join(extracted, 'backend/index.cjs'), [], { cwd: extracted, execArgv: [], env: { ...process.env, NODE_PATH: '', HALO_EXT_SOCKET: socket, HALO_EXT_DATA_DIR: join(f.temp, 'data') }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] })
+  const home = join(f.temp, 'home')
+  await chromiumStore(join(home, '.config/chromium'), 'Default', { metadataOnly: true })
+  const child = fork(join(extracted, 'backend/index.cjs'), [], { cwd: extracted, execArgv: [], env: { ...process.env, HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: join(home, '.config'), LOCALAPPDATA: join(home, 'AppData/Local'), APPDATA: join(home, 'AppData/Roaming'), NODE_PATH: '', HALO_EXT_SOCKET: socket, HALO_EXT_DATA_DIR: join(f.temp, 'data') }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] })
   const stderr: Buffer[] = []; child.stderr!.on('data', chunk => stderr.push(chunk))
   t.after(async () => { if (child.exitCode === null && child.signalCode === null) { const exit = once(child, 'exit'); child.kill('SIGTERM'); await exit } })
   const ready = await Promise.race([once(child, 'message'), once(child, 'exit').then(() => { throw new Error(Buffer.concat(stderr).toString()) })])
@@ -107,11 +120,26 @@ test('real linux build and isolated extracted backend boot without development d
     const req = request({ socketPath: socket, path: '/status' }, response => { response.resume(); resolve(response.statusCode!) }); req.end()
   })
   assert.equal(status, 401)
+  // Exercise the production factory and bundled SQLite worker, not just backend boot.
+  const sources = await http(socket, session(), '/command', { id: 'pack-sources', op: 'signin-sources', args: { site: 'example.com' } })
+  assert.equal(sources.body.ok, true); assert.equal(sources.body.result.length, 1)
+  assert.equal(sources.body.result[0].browser, 'Chromium'); assert.equal(sources.body.result[0].count, 1)
+  assert.equal(sources.body.result[0].available, true)
 })
 
-test('non-linux-x64 builds refuse missing F outputs before changing artifacts', async () => {
+test('all cross-platform builds use the same JS driver with no native-output prerequisite', { timeout: 60000 }, async t => {
+  const f = await buildFixture(t)
+  const before = await readFile(join(f.ext, 'backend/src/index.ts'), 'utf8')
+  // A leftover output from the old native plan must not enter the next package.
+  await mkdir(join(f.ext, 'backend/native'), { recursive: true })
+  await writeFile(join(f.ext, 'backend/native/stale-fixture'), 'not a runtime dependency')
   for (const platform of ['linux-arm64', 'darwin-arm64', 'darwin-x64', 'win-x64']) {
-    const result = spawnSync(process.execPath, ['build.mjs', '--platform', platform], { cwd: root, encoding: 'utf8' })
-    assert.notEqual(result.status, 0); assert.match(result.stderr, /gated on F native outputs/)
+    const result = spawnSync(process.execPath, ['build.mjs', '--platform', platform], { cwd: f.ext, encoding: 'utf8' })
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /OS-tool sign-in/)
+    await assert.rejects(readFile(join(f.ext, 'backend/native/stale-fixture')))
+    await readFile(join(f.ext, 'backend/node_modules/playwright/cli.js'))
+    await readFile(join(f.ext, 'backend/node_modules/playwright-core/lib/coreBundle.js'))
+    assert.equal(await readFile(join(f.ext, 'backend/src/index.ts'), 'utf8'), before)
   }
 })

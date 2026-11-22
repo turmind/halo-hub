@@ -3,3 +3,4 @@ dist/
 .staging/
 backend/index.cjs
 backend/node_modules/
+backend/native/

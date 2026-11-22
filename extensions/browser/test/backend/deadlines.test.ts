@@ -9,21 +9,32 @@ import { fixture, fixtureLauncher, http, session } from './fixtures.js'
 import { WorkspaceBrowser } from '../../backend/src/workspace.js'
 import { Hooks } from '../../backend/src/hooks.js'
 import type { ExtensionNoticeBackendMessage } from '../../contracts/halo-core/extension-notices.js'
+import { BROWSER_LIMITS } from '../../backend/src/protocol.js'
 
-test('initialization returns running by deadline, then pushes completion without polling', async () => {
+test('initialization returns running by deadline, then pushes completion without polling', { timeout: 60000 }, async t => {
   const f = await fixture(); const messages: unknown[] = []
-  let notify!: () => void
+  let notify!: () => void; let launching!: () => void; let release!: () => void
   const notice = new Promise<void>(resolve => { notify = resolve })
-  const backend = new BrowserBackend({ dataDir: join(f.directory, 'delayed'), send: message => { messages.push(message); if (message.type === 'halo:notice') notify() }, commandTimeoutMs: 100, launch: async (...args) => { await sleep(300); return fixtureLauncher(...args) } })
+  const started = new Promise<void>(resolve => { launching = resolve })
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const backend = new BrowserBackend({ dataDir: join(f.directory, 'delayed'), send: message => { messages.push(message); if (message.type === 'halo:notice' && message.notice.message.startsWith('Browser operation completed')) notify() }, launch: async (...args) => { launching(); await gate; return fixtureLauncher(...args) } })
   try {
-    const start = performance.now()
-    const response = await backend.command(session(), { id: 'delayed', op: 'open', args: { url: f.origin } })
-    assert.equal('status' in response && response.status, 'running'); assert.ok(performance.now() - start < 1000)
+    // Advance only the initialization response deadline. The old 100 ms override
+    // also killed real navigation/checkpoint work under concurrent Chromium load.
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+    const pending = backend.command(session(), { id: 'delayed', op: 'open', args: { url: f.origin } })
+    await started
+    t.mock.timers.tick(BROWSER_LIMITS.commandTimeoutMs)
+    const response = await pending
+    assert.equal('status' in response && response.status, 'running')
+    t.mock.timers.reset(); release()
     let timer: ReturnType<typeof setTimeout> | undefined
-    try { await Promise.race([notice, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('No completion notice')), 10000) })]) }
+    try { await Promise.race([notice, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('No completion notice')), 45000) })]) }
     finally { clearTimeout(timer) }
+    const completed = await backend.command(session(), { id: 'delayed', op: 'open', args: { url: f.origin } })
+    assert.equal(completed.ok, true); assert.ok('result' in completed)
     assert.ok(messages.some(message => (message as { type: string }).type === 'halo:notice'))
-  } finally { await backend.close(); await f.close() }
+  } finally { t.mock.timers.reset(); release(); await backend.close(); await f.close() }
 })
 
 test('queued agent work is fenced even after human resumes before queued work starts', async () => {

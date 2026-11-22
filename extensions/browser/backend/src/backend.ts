@@ -192,6 +192,9 @@ export class BrowserBackend {
     workspace.running++; this.busy()
     const deadline = setTimeout(() => { controller.abort(); void this.remove(workspace) }, BROWSER_LIMITS.handoffTimeoutMs)
     operation.response = this.execute(operation, request).then(response => {
+      // Terminal non-imports may be explicitly retried with a new request ID after
+      // resuming the lease. Keep ID dedupe and successful imports non-replayable.
+      if (response.op === 'signin-import' && response.ok && 'result' in response && ['cancelled', 'unavailable'].includes(response.result.status)) operation.importScope = undefined
       operation.operation = { id: request.id, status: 'completed', response: response as Exclude<BrowserCommandResponse, { status: 'running' }> }
       workspace.broadcast({ type: 'operation', operation: operation.operation })
       return response

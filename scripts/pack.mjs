@@ -71,7 +71,7 @@ function zipDir(name) {
   rmSync(out, { force: true });
   // Browser uses an allowlist: backend/src, tests, contracts and build inputs can never enter its archive.
   const inputs = basename(dir) === 'browser'
-    ? ['halo-extension.json', 'index.html', 'icon.svg', 'README.md', 'dist', 'skills', 'backend/index.cjs', 'backend/node_modules', ...(existsSync(`${dir}/backend/native`) ? ['backend/native'] : [])]
+    ? ['halo-extension.json', 'index.html', 'icon.svg', 'README.md', 'dist', 'skills', 'backend/index.cjs', 'backend/node_modules']
     : ['.'];
   execFileSync('zip', ['-r', '-X', '-q', out, ...inputs, '-x', 'fetch-deps.sh', 'build.sh', 'node_modules/*', 'src/*', 'package.json', 'package-lock.json', 'tsconfig.json', 'update.json', 'backend/PLATFORM', '.DS_Store'], { cwd: dir, stdio: 'inherit' });
   console.log(`${out} (${(statSync(out).size / 1048576).toFixed(1)} MB)`);

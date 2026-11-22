@@ -1,4 +1,5 @@
 import { BrowserBackend } from './backend.js'
+import { createSigninService } from './signin-import/index.js'
 import type { ExtensionBackendHostMessage } from '../../contracts/halo-core/extension-notices.js'
 import { killOwnedBrowsers } from './lifecycle.js'
 
@@ -6,7 +7,7 @@ if (process.platform !== 'win32') process.umask(0o077)
 const socket = process.env.HALO_EXT_SOCKET
 const dataDir = process.env.HALO_EXT_DATA_DIR
 if (!socket || !dataDir || !process.send) throw new Error('Browser backend requires the Halo private socket and IPC environment.')
-const backend = new BrowserBackend({ dataDir, send: message => { if (process.connected) process.send?.(message) } })
+const backend = new BrowserBackend({ dataDir, signin: createSigninService, send: message => { if (process.connected) process.send?.(message) } })
 process.on('message', message => backend.receive(message as ExtensionBackendHostMessage))
 let stopping = false
 const stop = async () => {
