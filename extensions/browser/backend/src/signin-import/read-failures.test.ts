@@ -26,7 +26,7 @@ for (const [platform, code, reason] of cases) test(`${platform} ${code} is ${rea
   const error = Object.assign(new Error(canary), { code })
   const fault = readFailure(error, platform, 'Chrome')
   assert.equal(fault.reason, reason); assert.ok(!fault.message.includes(canary))
-  if (reason === 'privacy') { assert.match(fault.message, /reading Chrome data/); assert.match(fault.message, /Full Disk Access/); assert.match(fault.message, /Cmd\+Q/); assert.doesNotMatch(fault.message, /Close that browser/) }
+  if (reason === 'privacy') { assert.match(fault.message, /Reading Chrome data was denied/); assert.match(fault.message, /Full Disk Access/); assert.match(fault.message, /Cmd\+Q/); assert.doesNotMatch(fault.message, /Close that browser/) }
   const stat = fs.stat
   const statMock = t.mock.method(fs, 'stat', (async (...args: any[]) => { if (args[0] === source.file) throw error; return (stat as any)(...args) }) as typeof fs.stat)
   syncBuiltinESMExports(); t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports() })
@@ -72,7 +72,7 @@ for (const kind of ['timeout', 'error', 'exit']) test(`worker ${kind} is unreada
   syncBuiltinESMExports(); t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports() })
   await assert.rejects(readStore(source, siteScope('example.com'), false, signal), { reason: 'unreadable', message: reasons.unreadable })
 })
-for (const operation of ['readdir', 'stat', 'readFile'] as const) test(`macOS discovery ${operation} EPERM keeps an unavailable Chrome source`, async t => {
+for (const operation of ['readdir', 'stat', 'readFile'] as const) test(`macOS discovery ${operation} EPERM classifies the affected Chrome source`, async t => {
   const f = await home('darwin'); t.after(() => f.close())
   const root = join(f.dir, 'Library/Application Support/Google/Chrome')
   const source = await chromiumStore(root)
@@ -84,12 +84,15 @@ for (const operation of ['readdir', 'stat', 'readFile'] as const) test(`macOS di
   }) as any)
   syncBuiltinESMExports(); t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports() })
   const sources = await discover(f.machine)
-  assert.equal(sources.filter(item => item.browser === 'Chrome' && item.unavailable === 'privacy').length, 1)
+  assert.equal(sources.length, 1); assert.equal(sources[0].unavailable, operation === 'readdir' ? undefined : 'privacy')
   const service = signinFactory(f.machine)(host()); t.after(() => service.dispose())
-  const dto = (await service.sources('example.com')).find(item => item.profile === 'Unavailable profiles')!
-  assert.equal(dto.available, false); assert.equal(dto.count, null); assert.match(dto.reason, /reading Chrome data/)
+  const [dto] = await service.sources('example.com')
+  assert.equal(dto.profile, 'Default'); assert.equal(dto.available, operation === 'readdir')
   assert.ok(!JSON.stringify(dto).includes(f.dir)); assert.ok(!JSON.stringify(dto).includes(canary))
-  assert.deepEqual(await service.import('example.com', dto.id), { status: 'unavailable', reason: dto.reason })
+  if (operation !== 'readdir') {
+    assert.equal(dto.count, null); assert.match(dto.reason, /Reading Chrome data was denied/)
+    assert.deepEqual(await service.import('example.com', dto.id), { status: 'unavailable', reason: dto.reason })
+  }
 })
 test('macOS permission loss after approval reports privacy instead of a missing or changed source', async t => {
   const f = await home('darwin'); t.after(() => f.close())
@@ -105,5 +108,5 @@ test('macOS permission loss after approval reports privacy instead of a missing 
   t.after(() => service.dispose())
   const result = await service.import('example.com', undefined)
   assert.equal(result.status, 'unavailable')
-  assert.match('reason' in result ? result.reason : '', /privacy protection blocked reading Chrome/)
+  assert.match('reason' in result ? result.reason : '', /Reading Chrome data was denied/)
 })

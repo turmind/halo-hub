@@ -26,7 +26,7 @@ export const reasons = {
   missing: 'No matching sign-in sources on this Halo server. Sign in inside Browser Canvas.',
   choose: 'Several sources match. Choose one source with --from; accounts are never merged.',
   changed: 'The source changed after approval. Review the sources and approve a new import.',
-  privacy: 'macOS privacy protection blocked reading {browser} data. Give Halo Full Disk Access (System Settings → Privacy & Security → Full Disk Access; add Halo from Applications and make sure it is switched on), then quit Halo completely (Cmd+Q) and reopen it. If Halo was started from a terminal, grant that terminal app instead.',
+  privacy: 'Reading {browser} data was denied (permission error) — on macOS this is usually privacy protection. Give Halo Full Disk Access (System Settings → Privacy & Security → Full Disk Access; add Halo from Applications and make sure it is switched on), then quit Halo completely (Cmd+Q) and reopen it. If Halo was started from a terminal, grant that terminal app instead.',
   locked: 'Cannot read this browser store. Close that browser and retry (closing can lose session cookies), or sign in inside Browser Canvas.',
   unreadable: 'Cannot read this browser store; sign in inside Browser Canvas instead.',
   keychain: "macOS Keychain access to '{service}' was denied; retry and click Allow (or Always Allow).",

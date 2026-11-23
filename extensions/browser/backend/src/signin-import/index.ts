@@ -57,8 +57,7 @@ export function signinFactory(machine: Machine, run: ToolRunner = runTool): (hos
         if (answer !== 'confirm') return { status: 'cancelled' }
         check(signal)
         // Re-discover and revalidate profile identity/OS protection before any value or key access.
-        const discovered = await discover(machine)
-        const current = discovered.find(s => s.id === chosen.source.id) ?? discovered.find(s => s.root === chosen.source.root && s.unavailable)
+        const current = (await discover(machine)).find(s => s.id === chosen.source.id)
         if (!current || current.unavailable || current.file !== chosen.source.file || current.profile !== chosen.source.profile) throw new SigninFault(current?.unavailable ?? 'changed', { browser: chosen.source.browser })
         if (chosen.store.fingerprint !== await fileFingerprint(current, machine.platform)) throw new SigninFault('changed')
         const store = await readStore(current, scope, true, signal, machine.platform)

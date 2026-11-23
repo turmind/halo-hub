@@ -10,10 +10,10 @@ export async function jsonFile(file: string, onError?: ReadError): Promise<Recor
   try { const value: unknown = JSON.parse(await readFile(file, 'utf8')); return value && typeof value === 'object' && !Array.isArray(value) ? value : {} } catch (error) { onError?.(error); return {} }
 }
 export function appBound(state: Record<string, any>) { return !!state.os_crypt && Object.hasOwn(state.os_crypt, 'app_bound_encrypted_key') }
-async function exists(file: string, onError?: ReadError) { try { return (await stat(file)).isFile() } catch (error) { onError?.(error); return false } }
+async function exists(file: string, onError?: ReadError) { try { return (await stat(file)).isFile() } catch (error) { onError?.(error); return undefined } }
 async function directories(root: string, onError?: ReadError) { try { return (await readdir(root, { withFileTypes: true })).filter(e => e.isDirectory() || e.isSymbolicLink()).map(e => e.name) } catch (error) { onError?.(error); return [] } }
 async function inside(root: string, file: string, onError?: ReadError) {
-  try { const part = relative(await realpath(root), await realpath(file)); return !isAbsolute(part) && part !== '..' && !part.startsWith('..' + (process.platform === 'win32' ? '\\' : '/')) } catch (error) { onError?.(error); return false }
+  try { const part = relative(await realpath(root), await realpath(file)); return !isAbsolute(part) && part !== '..' && !part.startsWith('..' + (process.platform === 'win32' ? '\\' : '/')) } catch (error) { onError?.(error); return undefined }
 }
 interface Root { browser: string; root: string; family: Source['family']; service?: string; account?: string; application?: string }
 export async function browserRoots(machine: Machine): Promise<Root[]> {
@@ -59,39 +59,52 @@ export async function browserRoots(machine: Machine): Promise<Root[]> {
 export async function discover(machine: Machine): Promise<Source[]> {
   const sources: Source[] = []; const seen = new Set<string>()
   const blocked = new Map<string, Source>()
+  const failure = (root: Root, metadata = false) => {
+    let reason: Source['unavailable']
+    return { get reason() { return reason }, onError: (error: unknown) => {
+      const code = (error as NodeJS.ErrnoException)?.code
+      if (code !== 'ENOENT' && (metadata || code !== 'ENOTDIR')) reason ??= readFailure(error, machine.platform, root.browser).reason
+    } }
+  }
   const report = (root: Root): ReadError => error => {
-    const code = (error as NodeJS.ErrnoException)?.code
-    if (!code || code === 'ENOENT' || code === 'ENOTDIR') return
-    // Preserve one unavailable browser entry when its profiles cannot be enumerated; never invent a readable store.
-    const unavailable = readFailure(error, machine.platform, root.browser).reason
-    if (blocked.get(root.root)?.unavailable === 'privacy') return
-    blocked.set(root.root, { ...root, file: root.root, profile: 'Unavailable profiles', id: createHash('sha256').update(root.root).digest('hex').slice(0, 32), unavailable })
+    const denied = failure(root); denied.onError(error)
+    if (denied.reason) blocked.set(root.root, { ...root, file: root.root, profile: 'Unavailable profiles', id: createHash('sha256').update(root.root).digest('hex').slice(0, 32), unavailable: denied.reason })
   }
   const add = async (root: Root, file: string, profile: string, unavailable?: Source['unavailable']) => {
-    const onError = report(root)
-    if (!await exists(file, onError)) return
-    let canonical: string
-    try { canonical = await realpath(file) } catch (error) { onError(error); canonical = file }
-    if (seen.has(canonical)) return
+    const denied = failure(root)
+    const present = await exists(file, denied.onError)
+    if (!present && !denied.reason) return false
+    let canonical = file
+    try { canonical = await realpath(file) } catch (error) { denied.onError(error) }
+    const contained = await inside(root.root, file, denied.onError)
+    if (contained === undefined && !denied.reason) return false
+    if (seen.has(canonical)) return true
     seen.add(canonical)
-    sources.push({ ...root, file: canonical, profile: label(profile, 'Profile'), id: createHash('sha256').update(canonical).digest('hex').slice(0, 32), ...(!await inside(root.root, file, onError) ? { unavailable: 'scope' as const } : unavailable ? { unavailable } : {}) })
+    unavailable = denied.reason ?? (contained === false ? 'scope' : unavailable)
+    sources.push({ ...root, file: canonical, profile: label(profile, 'Profile'), id: createHash('sha256').update(canonical).digest('hex').slice(0, 32), ...(unavailable ? { unavailable } : {}) })
+    return true
   }
   for (const root of await browserRoots(machine)) {
     const onError = report(root)
     if (root.family === 'chromium') {
-      const state = await jsonFile(join(root.root, 'Local State'), onError)
+      const rootFailure = failure(root, true)
+      const state = await jsonFile(join(root.root, 'Local State'), error => { rootFailure.onError(error); onError(error) })
       const profiles = new Set(['Default', ...Object.keys(state.profile?.info_cache ?? {}), ...await directories(root.root, onError)])
       for (const profile of profiles) {
         if (profile.includes('/') || profile.includes('\\') || profile === '..' || /^(Guest Profile|System Profile)$/.test(profile)) continue
-        if (!await inside(root.root, join(root.root, profile), onError)) continue
-        const pref = await jsonFile(join(root.root, profile, 'Preferences'), onError)
+        const denied = failure(root)
+        const contained = await inside(root.root, join(root.root, profile), denied.onError)
+        if (contained === false || contained === undefined && !denied.reason) continue
+        const pref = contained === true ? await jsonFile(join(root.root, profile, 'Preferences'), denied.onError) : {}
+        const name = denied.reason ? 'Unavailable profile' : label(pref.profile?.name, profile)
         for (const file of ['Network/Cookies', 'Cookies']) {
-          const full = join(root.root, profile, file)
-          if (await exists(full, onError)) { await add(root, full, label(pref.profile?.name, profile), machine.platform === 'win32' && appBound(state) ? 'appBound' : undefined); break }
+          if (await add(root, join(root.root, profile, file), name, denied.reason ?? (machine.platform === 'win32' && appBound(state) ? 'appBound' : undefined))) break
         }
       }
       // Opera stores Cookies directly in its standard root on some platforms.
-      for (const file of ['Network/Cookies', 'Cookies']) if (await exists(join(root.root, file), onError)) { await add(root, join(root.root, file), 'Default', machine.platform === 'win32' && appBound(state) ? 'appBound' : undefined); break }
+      for (const file of ['Network/Cookies', 'Cookies']) if (await add(root, join(root.root, file), 'Default', machine.platform === 'win32' && appBound(state) ? 'appBound' : undefined)) break
+      // Local State supplies names, key metadata and app-bound protection for every profile in this root.
+      if (rootFailure.reason) for (const source of sources) if (source.root === root.root) source.unavailable = rootFailure.reason
     } else {
       const candidates = new Map<string, string>()
       for (const file of ['profiles.ini', 'installs.ini']) {
@@ -105,8 +118,10 @@ export async function discover(machine: Machine): Promise<Source[]> {
       for (const base of [root.root, join(root.root, 'Profiles')]) for (const dir of await directories(base, onError)) if (!candidates.has(join(base, dir))) candidates.set(join(base, dir), dir)
       for (const [dir, name] of candidates) {
         // Do not open a redirected custom profile, even to obtain its metadata.
-        if (!await inside(root.root, dir, onError)) continue
-        await add(root, join(dir, 'cookies.sqlite'), name)
+        const denied = failure(root)
+        const contained = await inside(root.root, dir, denied.onError)
+        if (contained === false || contained === undefined && !denied.reason) continue
+        await add(root, join(dir, 'cookies.sqlite'), name, denied.reason)
       }
     }
   }
@@ -118,5 +133,6 @@ export async function discover(machine: Machine): Promise<Source[]> {
     }
     await add({ browser: 'Safari', family: 'safari', root: join(machine.home, 'Library/Cookies') }, join(machine.home, 'Library/Cookies/Cookies.binarycookies'), 'Legacy')
   }
-  return [...sources, ...blocked.values()]
+  const populated = new Set(sources.map(source => source.root))
+  return [...sources, ...[...blocked.values()].filter(source => !populated.has(source.root))]
 }
