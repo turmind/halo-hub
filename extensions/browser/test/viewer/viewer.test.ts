@@ -129,10 +129,13 @@ test('Canvas viewer against real backend: DPI, inputs, ownership, resume and lif
     assert.equal(await view.getByRole('button', { name: 'Done', exact: true }).count(), 0)
   })
   await t.test('same-session action after a new human turn automatically returns 10 → 2', async () => {
+    const before = f.frames.length
     const resumed = await f.command('press', { key: 'Escape' }, 'turn2')
     assert.equal(resumed.body.result.status, 'ok')
     await mode(view, '2 fps'); await mode(second, '2 fps')
     assert.match(await view.locator('#mode').innerText(), /Agent is driving/)
+    assert.equal(f.frames.slice(before).some((frame: any) => frame.type === 'input'), false)
+    assert.doesNotMatch(await view.locator('#error').innerText(), /Another viewer/)
   })
   await secondPage.close()
   await t.test('hidden viewer closes stream; show and transport loss reconnect without taking control', async () => {

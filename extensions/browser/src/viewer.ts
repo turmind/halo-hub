@@ -211,7 +211,8 @@ async function draw(bytes: ArrayBuffer, ws: WebSocket) {
 function receive(frame: BrowserServerFrame) {
   switch (frame.type) {
     case 'state':
-      if (canInput && !frame.canInput) release()
+      // The backend already released input on revocation; discard local state without a stale send.
+      if (canInput && !frame.canInput) { canInput = false; release() }
       state = frame.state; canInput = connected && frame.canInput
       if (canInput && pendingTakeover) {
         pendingTakeover = false
