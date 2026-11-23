@@ -223,6 +223,8 @@ export class BrowserBackend {
     controller.signal.addEventListener('abort', () => operation.wake?.(), { once: true })
     let result
     if (request.op === 'signin-import' || request.op === 'signin-sources') {
+      await workspace.inputReleased
+      checkSignal(controller.signal)
       if (!this.options.signin) {
         if (request.op === 'signin-import') return { id: request.id, op: 'signin-import', ok: true, result: { status: 'unavailable', reason: 'Existing sign-in service is not installed. Sign in inside Browser Canvas.' } }
         throw new BrowserFault('unavailable')

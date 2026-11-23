@@ -70,7 +70,7 @@ test('read keeps internal snapshot identities out of labels and exposes only act
     const response = await http(f.socket, caller, '/command', { id: 'read', op: 'read', args: {} })
     assert.equal(response.body.ok, true)
     const { ariaSnapshot, snapshotId, refs } = response.body.result
-    assert.deepEqual(ariaSnapshot.match(/\[ref=e\d+\]/g), ['[ref=e999]']) // Keep literal field values, not generated identities.
+    assert.doesNotMatch(ariaSnapshot, /\[ref=[^\]]+\]/) // Strip all internal identity syntax, including frame-prefixed refs.
     const target = refs.find((ref: any) => ref.name === 'X')
     assert.match(target.id, /^r\d+$/)
     assert.equal((await http(f.socket, caller, '/command', { id: 'click', op: 'click', args: { snapshotId, ref: target.id } })).body.ok, true)

@@ -118,14 +118,14 @@ test('single ZIP strips dependency dev files and boots the backend, sign-in work
   execFileSync('unzip', ['-q', join(f.temp, 'dist/browser-1.0.0.zip'), '-d', extracted])
   const files = (await readdir(join(extracted, 'backend/node_modules'), { recursive: true })).map(file => file.replaceAll('\\', '/'))
   const development = files.filter(file => /(^|\/)(tests?|__tests__|\.github|examples?|docs?|fixtures?|benchmarks?|coverage)(\/|$)|\.(test|spec)\.|\.(map|[cm]?ts|tsx)$/i.test(file))
-  // Playwright's lib/mcp/test and YAML's dist/doc are runtime modules, not test/documentation files.
-  assert.deepEqual(development.filter(file => !/^(?:playwright\/lib\/mcp\/test|yaml\/(?:browser\/)?dist\/doc)(?:\/|$)/.test(file)), [])
+  // Playwright's lib/mcp/test is CLI runtime, not its test suite.
+  assert.deepEqual(development.filter(file => !/^playwright\/lib\/mcp\/test(?:\/|$)/.test(file)), [])
   assert.ok(files.includes('playwright/lib/mcp/test/testBackend.js'))
-  for (const dependency of ['playwright', 'playwright-core', 'ws', 'tldts', '@homebridge/dbus-native', 'yaml']) {
+  for (const dependency of ['playwright', 'playwright-core', 'ws', 'tldts', '@homebridge/dbus-native']) {
     await readFile(join(extracted, 'backend/node_modules', dependency, 'package.json'))
     await readFile(join(extracted, 'backend/node_modules', dependency, 'LICENSE'))
   }
-  await readFile(join(extracted, 'backend/node_modules/yaml/dist/doc/directives.js'))
+  assert.ok(!files.includes('yaml/package.json'))
   assert.match(execFileSync(process.execPath, ['backend/node_modules/playwright/cli.js', 'install', '--help'], { cwd: extracted, encoding: 'utf8' }), /install/)
   await readFile(join(extracted, 'backend/node_modules/playwright-core/browsers.json'))
   const css = await readFile(join(extracted, 'dist/viewer.css'), 'utf8')

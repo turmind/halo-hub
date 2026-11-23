@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { writeFile, rm, readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { parseDocument, visit, isPair, isScalar, Scalar } from 'yaml'
 import type { BrowserContext, CDPSession, ElementHandle, Page } from 'playwright'
 import type { ExtensionCaller, ExtensionSessionCaller } from '../../contracts/halo-core/extension-notices.js'
 import { BROWSER_LIMITS, BROWSER_VIEWPORT, BROWSER_JPEG_QUALITY, isReadCommand, type BrowserCommandRequest, type BrowserCommandResults, type BrowserCommandName, type BrowserState, type BrowserRuntimeInfo, type BrowserServerFrame, type BrowserPageRead, type BrowserViewerFrame } from './protocol.js'
@@ -26,6 +25,7 @@ export class WorkspaceBrowser {
   driver: 'idle' | 'agent' | 'user' = 'idle'
   pendingImport = false
   running = 0
+  inputReleased: Promise<void> = Promise.resolve()
   private fence: string | null = null
   private latestMarkers = new Map<string, string>()
   private epoch = 0
@@ -91,7 +91,8 @@ export class WorkspaceBrowser {
       const latest = this.latestMarkers.get(this.owner.bindingId)
       if (this.pendingImport || this.commit || !caller.userTurnId || caller.userTurnId === this.fence || latest && caller.userTurnId !== latest) return 'waiting-for-user'
       this.owner = caller; this.driver = 'agent'; this.epoch++; this.inputOwner = undefined
-      void this.input?.send({ kind: 'release-all' }).catch(() => {})
+      // Queue behind in-flight viewer input; agent execution awaits this release barrier.
+      this.inputReleased = this.serial(async () => { await this.input?.send({ kind: 'release-all' }) })
       this.delivery.mode(false); this.broadcast()
     }
     if (!this.owner) { this.owner = caller; this.driver = 'agent'; this.epoch++; this.broadcast() }
@@ -325,25 +326,9 @@ export class WorkspaceBrowser {
   private async readPage(): Promise<BrowserPageRead> {
     this.clearRefs()
     const page = this.page(); const snapshotId = randomUUID(); this.snapshotId = snapshotId
+    const before = await this.passwordValues(page)
     const text = await page.locator('body').innerText()
-    // Playwright 1.61 includes raw password values in ARIA. Resolve value-bearing nodes by
-    // snapshot identity and redact only password nodes; never change the live form's values.
-    const document = parseDocument(await page.locator('body').ariaSnapshot({ mode: 'ai' }))
-    if (document.errors.length) throw new BrowserFault('operation-failed')
-    const values: Array<{ id: string; mask: () => void }> = []
-    visit(document, { Scalar: (key, node, path) => {
-      if (key !== 'key' && typeof key !== 'number' || typeof node.value !== 'string') return
-      const match = / \[ref=(e\d+)\](?=(?: \[[^\]]*\])*$)/.exec(node.value)
-      if (!match) return
-      const pair = path.at(-1)
-      if (isPair(pair) && isScalar(pair.value)) values.push({ id: match[1], mask: () => { pair.value = new Scalar('••••') } })
-      // Playwright identities are private to masking; only our snapshotId:rN refs are actionable.
-      node.value = node.value.replace(match[0], '')
-    } })
-    for (const value of values) {
-      if (await page.locator(`aria-ref=${value.id}`).evaluate(node => node instanceof HTMLInputElement && node.type === 'password')) value.mask()
-    }
-    const aria = document.toString({ lineWidth: 0 })
+    const aria = await page.locator('body').ariaSnapshot({ mode: 'ai' })
     const refs: BrowserPageRead['refs'] = []
     const targets = page.locator('a,button,input,textarea,select,[role],[contenteditable="true"]')
     const targetCount = await targets.count()
@@ -351,13 +336,38 @@ export class WorkspaceBrowser {
       const handle = await targets.nth(index).elementHandle()
       if (!handle) continue
       if (!await handle.isVisible()) { await handle.dispose(); continue }
-      const meta = await handle.evaluate(node => { const el = node as Element; return { role: el.getAttribute('role') ?? el.tagName.toLowerCase(), name: (el.getAttribute('aria-label') ?? el.getAttribute('placeholder') ?? el.textContent ?? '').slice(0, 160) } })
+      const meta = await handle.evaluate(node => { const el = node as Element; return { role: el.getAttribute('role') ?? el.tagName.toLowerCase(), name: el.getAttribute('aria-label') ?? el.getAttribute('placeholder') ?? el.textContent ?? '' } })
       const id = `r${refs.length + 1}`; this.refs.set(id, handle); refs.push({ id, ...meta })
     }
+    const result: BrowserPageRead = { tabId: this.activeTabId!, url: safeUrl(page.url()), title: await page.title(), text, ariaSnapshot: aria, snapshotId, refs, truncated: text.length > BROWSER_LIMITS.pageTextChars || aria.length > BROWSER_LIMITS.snapshotChars || targetCount > 200 }
+    const after = await this.passwordValues(page)
+    if (before.size !== after.size || [...before].some(value => !after.has(value))) throw new BrowserFault('operation-failed')
     if (this.snapshotId !== snapshotId) throw new BrowserFault('stale-ref')
-    return { tabId: this.activeTabId!, url: safeUrl(page.url()), title: (await page.title()).slice(0, 200), text: text.slice(0, BROWSER_LIMITS.pageTextChars), ariaSnapshot: aria.slice(0, BROWSER_LIMITS.snapshotChars), snapshotId, refs, truncated: text.length > BROWSER_LIMITS.pageTextChars || aria.length > BROWSER_LIMITS.snapshotChars || targetCount > 200 }
+    // ARIA quotes values and derived names. Include their escaped spellings, not only raw text.
+    const passwords = [...new Set([...before].flatMap(value => {
+      const quoted = JSON.stringify(value).slice(1, -1)
+      const yamlQuoted = quoted.replace(/\\u00([0-9a-f]{2})|[\x7f-\x9f]/g, (char, hex: string | undefined) => '\\x' + (hex ?? char.charCodeAt(0).toString(16)))
+      return [value, quoted, yamlQuoted, value.replace(/'/g, "''"), quoted.replace(/'/g, "''")]
+    }))].sort((a, b) => b.length - a.length)
+    const redact = (value: string) => { for (const password of passwords) value = value.split(password).join('••••'); return value }
+    // Redact before truncating or stripping internal refs: both can split a password value.
+    for (const key of ['tabId', 'url', 'title', 'text', 'ariaSnapshot', 'snapshotId'] as const) result[key] = redact(result[key])
+    for (const ref of refs) { ref.id = redact(ref.id); ref.role = redact(ref.role); ref.name = redact(ref.name).slice(0, 160) }
+    result.title = result.title.slice(0, 200); result.text = result.text.slice(0, BROWSER_LIMITS.pageTextChars)
+    result.ariaSnapshot = result.ariaSnapshot.replace(/\s*\[ref=[^\]]+\]/g, '').slice(0, BROWSER_LIMITS.snapshotChars)
+    return result
+  }
+  private async passwordValues(page: Page): Promise<Set<string>> {
+    const values = await Promise.all(page.frames().map(async frame => {
+      try { return await frame.locator('input[type=password]').evaluateAll(els => els.map(el => (el as HTMLInputElement).value)) }
+      catch { if (frame.isDetached()) return []; throw new BrowserFault('operation-failed') }
+    }))
+    // Locators and Playwright's ARIA snapshot traverse open, not closed, shadow roots.
+    // Closed-root values are unavailable; values copied outside those roots cannot be recognized here.
+    return new Set(values.flat().filter(Boolean))
   }
   async command(caller: ExtensionSessionCaller, request: BrowserCommandRequest, signal: AbortSignal, epoch: number): Promise<BrowserCommandResults[BrowserCommandName]> {
+    await this.inputReleased
     if (request.op === 'handoff') { this.handoff(caller, request.args.reason); return { status: 'waiting-for-user' } }
     await this.ensureContext()
     return this.serial(async () => {

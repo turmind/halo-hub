@@ -47,9 +47,7 @@ async function copyDependency(name, from) {
     const file = parts.at(-1) ?? '';
     // Playwright's CLI imports lib/mcp/test at startup: this is runtime code, not its test suite.
     const runtimeTest = name === 'playwright' && parts.slice(0, 3).join('/') === 'lib/mcp/test';
-    // yaml's dist/doc (also browser/dist/doc) is its runtime document model, not documentation.
-    const runtimeDoc = name === 'yaml' && parts.includes('dist') && parts.includes('doc');
-    if (parts.some(part => /^(node_modules|tests?|__tests__|\.git|\.github|examples?|docs?|fixtures?|benchmarks?|coverage)$/i.test(part) && !(runtimeTest && part === 'test') && !(runtimeDoc && part === 'doc'))) return false;
+    if (parts.some(part => /^(node_modules|tests?|__tests__|\.git|\.github|examples?|docs?|fixtures?|benchmarks?|coverage)$/i.test(part) && !(runtimeTest && part === 'test'))) return false;
     return !/\.(?:test|spec)\.|\.(?:map|[cm]?ts|tsx)$/i.test(file);
   } });
   for (const child of Object.keys(dependency.dependencies ?? {})) await copyDependency(child, source);
