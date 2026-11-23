@@ -32,3 +32,12 @@ A shared workspace browser on the Halo server; users can interact and navigate d
 3. Never enter account credentials for users; use `handoff` for login. Never expose backend keys or profile files.
 4. On `busy`, tell the user another session is using the browser.
 5. Do not repeat successful imports; equivalent requests deduplicate. Retry failed/cancelled imports only when requested; uncertain outcomes require user inspection, not a claim of success.
+
+## Sign-in import on macOS
+
+1. Run `signin-sources <site>`; relay the `privacy` reason's Full Disk Access instructions to the user.
+2. Before retrying import, ask permission to close tabs listed in `activeWorkers`; obtain fresh IDs with `tabs`, never reuse pre-restart IDs.
+3. For Keychain “Chrome Safe Storage”, ask the user to click Allow.
+4. After completion, fetch `operation <id>` once; `open` a signed-in page and `read` to verify. Imported cookies alone prove nothing.
+
+Windows: `locked` can mean the running browser occupies files; ask the user to fully quit it, warning that session cookies may be lost.
