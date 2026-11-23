@@ -102,7 +102,7 @@ export class BrowserBackend {
       try {
         if (binary || pending >= 64) throw new BrowserFault('invalid-request')
         const frame = JSON.parse(data.toString()) as BrowserViewerFrame
-        if (!frame || !['subscribe', 'frame-ack', 'takeover', 'input', 'select-tab', 'visible'].includes(frame.type)) throw new BrowserFault('invalid-request')
+        if (!frame || !['subscribe', 'frame-ack', 'takeover', 'input', 'select-tab', 'visible', 'navigate', 'back', 'forward', 'reload', 'new-tab', 'close-tab'].includes(frame.type)) throw new BrowserFault('invalid-request')
         if (frame.type === 'subscribe') clearTimeout(subscribeTimer)
         pending++
         void workspace.viewerMessage(viewer, frame).catch(error => viewer.json({ type: 'error', error: publicError(error) })).finally(() => { pending-- })
@@ -265,7 +265,7 @@ export class BrowserBackend {
         void operation.response.then(result => {
           const outcome = result.op === 'signin-import' && result.ok && 'result' in result ? ` Sign-in: ${result.result.status}${result.result.status === 'unavailable' ? ` — ${result.result.reason}` : ''}.` : ''
           // Completion belongs to the caller/operation, not the now-ended workspace lease. Hooks still revoke invalid bindings.
-          this.hooks.open(operation.caller, operation.workspace.viewId, `Browser operation completed (${operation.operation.id}).${outcome} Retrieve its result once with operation ${operation.operation.id} in the same chat.`, this.completionLife.signal)
+          this.hooks.completed(operation.caller, operation.workspace.viewId, `Browser operation completed (${operation.operation.id}).${outcome} Retrieve its result once with operation ${operation.operation.id} in the same chat.`, this.completionLife.signal)
         })
       }
       return response

@@ -87,3 +87,50 @@ test('live refs, scripted actions, popup tabs, input validation and two viewers 
     assert.ok(!JSON.stringify(f.messages).includes('manufactured-中文'))
   } finally { for (const peer of peers) peer.terminate(); await f.close() }
 })
+
+test('viewer shell frames are owned, validated and serialized; closing last tab creates a blank', async () => {
+  const f = await fixture(); const peers: WebSocket[] = []
+  try {
+    const opened = await http(f.socket, session(), '/command', { id: 'open', op: 'open', args: { url: f.origin } })
+    const notice = f.messages.find((message: any) => message.type === 'halo:notice') as any
+    // This shell test starts after first paint; immediate-subscribe Chromium surface timing is separate from shell controls.
+    await f.contexts[0].pages()[0].evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    const one = await viewer(f.socket, opened.body.result.viewId); peers.push(one.ws)
+    await until(() => one.images.length > 0)
+    assert.ok(f.messages.some((message: any) => message.type === 'halo:notice:withdraw' && message.id === notice.notice.id))
+    const notices = f.messages.filter((message: any) => message.type === 'halo:notice').length
+    await http(f.socket, session(), '/command', { id: 'reopen', op: 'open', args: { url: f.origin } })
+    assert.equal(f.messages.filter((message: any) => message.type === 'halo:notice').length, notices)
+    const state = () => one.frames.filter(frame => frame.type === 'state').at(-1)!.state
+    for (const frame of [{ type: 'navigate', url: f.origin }, { type: 'back' }, { type: 'forward' }, { type: 'reload' }, { type: 'new-tab' }, { type: 'close-tab', tabId: state().activeTabId }, { type: 'select-tab', tabId: state().activeTabId }]) {
+      const count = one.frames.length; one.send(frame)
+      await until(() => one.frames.slice(count).some(frame => frame.type === 'error' && frame.error.code === 'forbidden'))
+    }
+    one.send({ type: 'takeover' }); await until(() => one.frames.some(frame => frame.type === 'state' && frame.canInput))
+    for (const url of ['file:///fixture', 'chrome://settings', 'javascript:1', 'data:text/plain,test', 'https://u:p@example.com', 'no scheme', 42, 'x'.repeat(8193)]) {
+      const count = one.frames.length; one.send({ type: 'navigate', url })
+      await until(() => one.frames.slice(count).some(frame => frame.type === 'error' && frame.error.code === 'invalid-request'))
+    }
+    for (const type of ['select-tab', 'close-tab']) {
+      const count = one.frames.length; one.send({ type, tabId: '../invalid' })
+      await until(() => one.frames.slice(count).some(frame => frame.type === 'error' && frame.error.code === 'invalid-request'))
+    }
+    const page = f.contexts[0].pages()[0]
+    one.send({ type: 'navigate', url: f.origin + '/next' }); await until(() => page.url().endsWith('/next'))
+    one.send({ type: 'back' }); await until(() => page.url() === f.origin + '/')
+    one.send({ type: 'forward' }); await until(() => page.url().endsWith('/next'))
+    let loads = 0; page.on('domcontentloaded', () => loads++)
+    one.send({ type: 'reload' }); await until(() => loads > 0)
+    const old = state().activeTabId!
+    one.send({ type: 'new-tab' }); await until(() => state().tabs.length === 2 && state().activeTabId !== old)
+    const blank = state().activeTabId!
+    one.send({ type: 'select-tab', tabId: old }); await until(() => state().activeTabId === old)
+    one.send({ type: 'close-tab', tabId: old }); await until(() => state().tabs.length === 1 && state().activeTabId === blank)
+    one.send({ type: 'close-tab', tabId: blank })
+    await until(() => state().tabs.length === 1 && state().activeTabId !== blank && state().tabs[0].url === 'about:blank')
+    assert.equal(f.contexts[0].pages().length, 1)
+    assert.ok(state().activeTabId)
+    const latestErrors = one.frames.filter(frame => frame.type === 'error')
+    assert.equal(latestErrors.length, 17)
+  } finally { for (const peer of peers) peer.terminate(); await f.close() }
+})

@@ -48,10 +48,17 @@ export class Hooks extends EventEmitter {
   private opens = new Map<string, string>()
   open(caller: ExtensionCaller, viewId: string, message: string, signal: AbortSignal) {
     const key = JSON.stringify([caller.projectId, caller.sessionId, viewId])
-    const previous = this.opens.get(key)
-    if (previous) this.withdraw(previous)
+    this.withdrawOpen(caller, viewId)
     const id = randomUUID(); this.opens.set(key, id)
-    void this.notice(caller, { id, message, level: 'info', expiresInMs: 30 * 60 * 1000, action: { type: 'open-canvas', viewId, title: 'Browser' } }, signal).finally(() => { if (this.opens.get(key) === id) this.opens.delete(key) })
+    void this.notice(caller, { id, message, level: 'info', expiresInMs: 30 * 60 * 1000, action: { type: 'open-canvas', viewId } }, signal).finally(() => { if (this.opens.get(key) === id) this.opens.delete(key) })
+  }
+  withdrawOpen(caller: ExtensionCaller, viewId: string) {
+    const key = JSON.stringify([caller.projectId, caller.sessionId, viewId])
+    const id = this.opens.get(key)
+    if (id) { this.opens.delete(key); this.withdraw(id) }
+  }
+  completed(caller: ExtensionCaller, viewId: string, message: string, signal: AbortSignal) {
+    void this.notice(caller, { id: randomUUID(), message, level: 'info', expiresInMs: 30 * 60 * 1000, action: { type: 'open-canvas', viewId } }, signal)
   }
   private withdraw(id: string, decision: ExtensionNoticeDecision = 'withdrawn') {
     this.send({ type: 'halo:notice:withdraw', id }); this.pending.get(id)?.finish(decision)

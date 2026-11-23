@@ -20,3 +20,24 @@ test('notice acceptance/generation, cancellation and busy no-op IPC', async () =
     abort.abort(); assert.equal(await cancelled, 'withdrawn')
   } finally { hooks.close() }
 })
+
+test('open notices withdraw by workspace/session/view; completion remains independent', async () => {
+  const messages: any[] = []; const hooks = new Hooks(message => messages.push(message)); const signal = new AbortController().signal
+  try {
+    hooks.open(session(), 'view', 'Open', signal)
+    const first = messages.at(-1).notice.id
+    hooks.open(session(), 'view', 'Handoff', signal)
+    assert.equal(messages.at(-2).id, first)
+    const second = messages.at(-1).notice.id
+    assert.deepEqual(messages.at(-1).notice.action, { type: 'open-canvas', viewId: 'view' })
+    hooks.completed(session(), 'view', 'Completed operation-id', signal)
+    const completed = messages.at(-1).notice.id
+    const count = messages.length
+    hooks.withdrawOpen(session('other'), 'view'); hooks.withdrawOpen(session('one', '/other'), 'view'); hooks.withdrawOpen(session(), 'other')
+    assert.equal(messages.length, count)
+    hooks.withdrawOpen(session(), 'view'); hooks.withdrawOpen(session(), 'view')
+    assert.deepEqual(messages.slice(count), [{ type: 'halo:notice:withdraw', id: second }])
+    assert.equal(messages.some(message => message.type === 'halo:notice:withdraw' && message.id === completed), false)
+    await Promise.resolve()
+  } finally { hooks.close() }
+})

@@ -12,6 +12,7 @@ import type { BrowserLauncher } from './browser-launcher.js'
 import type { Hooks } from './hooks.js'
 import { killContext } from './lifecycle.js'
 import type { SigninCommit } from './signin-service.js'
+import { httpUrl, opaque } from './validation.js'
 
 export interface Viewer extends FramePeer { json(frame: BrowserServerFrame): void; close(): void }
 interface ViewerState { caller: ExtensionCaller; visible: boolean; subscribed: boolean }
@@ -104,7 +105,7 @@ export class WorkspaceBrowser {
       this.fence = this.owner ? this.latestMarkers.get(this.owner.bindingId) ?? this.owner.userTurnId : null
       this.driver = 'user'; this.epoch++; this.clearRefs(); this.delivery.mode(true)
     }
-    if (caller) this.hooks.open(caller, this.viewId, reason, this.life.signal)
+    if (caller) this.openViewer(caller, reason, this.life.signal)
     this.touch(); this.broadcast()
   }
   touch() { this.lastActivity = performance.now(); this.scheduleLease(); this.changed() }
@@ -186,6 +187,10 @@ export class WorkspaceBrowser {
     page.on('download', download => { void download.cancel().catch(() => {}); this.unsupported() })
   }
   private unsupported() { this.broadcast({ type: 'error', error: { code: 'unavailable', message: 'Native dialogs, uploads and download management are not supported in this viewer.' } }) }
+  private async newTab() {
+    const page = await this.context!.newPage(); this.registerPage(page)
+    await this.select([...this.pages].find(([, candidate]) => candidate === page)![0])
+  }
   private async select(tabId: string) {
     const page = this.pages.get(tabId)
     if (!page) throw new BrowserFault('not-found')
@@ -216,8 +221,13 @@ export class WorkspaceBrowser {
       this.capturing = false; this.delivery.clearFrame(); await this.cdp.send('Page.stopScreencast')
     }
   }
+  private openViewer(caller: ExtensionSessionCaller, message: string, signal: AbortSignal) {
+    if (!this.viewers.size) this.hooks.open(caller, this.viewId, message, signal)
+  }
   attach(viewer: Viewer, caller: ExtensionCaller) {
     this.viewers.set(viewer, { caller, subscribed: false, visible: false })
+    this.hooks.withdrawOpen(caller, this.viewId)
+    if (this.owner) this.hooks.withdrawOpen(this.owner, this.viewId)
     viewer.json({ type: 'runtime', runtime: this.runtime }); this.broadcast()
   }
   async detach(viewer: Viewer) {
@@ -251,13 +261,29 @@ export class WorkspaceBrowser {
         if (this.inputOwner !== viewer || this.driver !== 'user') throw new BrowserFault('forbidden')
         const epoch = this.epoch
         const event = frame.type === 'input' ? validateInput(frame.event) : undefined
+        if (frame.type === 'navigate' && !httpUrl(frame.url) || (frame.type === 'select-tab' || frame.type === 'close-tab') && !opaque(frame.tabId)) throw new BrowserFault('invalid-request')
         await this.serial(async () => {
-          if (epoch !== this.epoch || this.inputOwner !== viewer) throw new BrowserFault('forbidden')
-          if (frame.type === 'select-tab') await this.select(frame.tabId)
-          else if (event) await this.input?.send(event)
-          else throw new BrowserFault('invalid-request')
+          if (epoch !== this.epoch || this.inputOwner !== viewer || this.driver !== 'user') throw new BrowserFault('forbidden')
+          switch (frame.type) {
+            case 'select-tab': await this.select(frame.tabId); break
+            case 'navigate': await this.page().goto(frame.url, { waitUntil: 'domcontentloaded' }); break
+            case 'back': await this.page().goBack({ waitUntil: 'domcontentloaded' }); break
+            case 'forward': await this.page().goForward({ waitUntil: 'domcontentloaded' }); break
+            case 'reload': await this.page().reload({ waitUntil: 'domcontentloaded' }); break
+            case 'new-tab': await this.newTab(); break
+            case 'close-tab': {
+              const page = this.pages.get(frame.tabId)
+              if (!page) throw new BrowserFault('not-found')
+              // Select the replacement before close so the page-close listener cannot queue a stale selection.
+              if (this.pages.size === 1) await this.newTab()
+              else if (this.activeTabId === frame.tabId) await this.select([...this.pages.keys()].find(id => id !== frame.tabId)!)
+              await page.close(); break
+            }
+            case 'input': await this.input?.send(event!); break
+            default: throw new BrowserFault('invalid-request')
+          }
         })
-        const meaningful = frame.type === 'select-tab' || event?.kind === 'text' || event?.kind === 'wheel' || (event?.kind === 'pointer' || event?.kind === 'key') && event.event === 'down'
+        const meaningful = frame.type !== 'input' || event?.kind === 'text' || event?.kind === 'wheel' || (event?.kind === 'pointer' || event?.kind === 'key') && event.event === 'down'
         if (meaningful || this.checkpointDirty) this.scheduleCheckpoint(meaningful)
       }
     }
@@ -330,7 +356,7 @@ export class WorkspaceBrowser {
           }
           await page.goto(request.args.url, { waitUntil: 'domcontentloaded' })
           result = { viewId: this.viewId, tab: { id: this.activeTabId!, title: (await page.title()).slice(0, 200), url: safeUrl(page.url()) } }
-          this.hooks.open(caller, this.viewId, 'Browser is ready to open in Canvas.', this.life.signal); break
+          this.openViewer(caller, 'Browser is ready to open in Canvas.', this.life.signal); break
         }
         case 'read': result = await this.readPage(); break
         case 'click': case 'type': {

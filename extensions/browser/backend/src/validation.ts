@@ -17,6 +17,11 @@ export function callerFrom(headers: IncomingHttpHeaders): ExtensionCaller {
     return caller
   } catch { throw new BrowserFault('unauthorized') }
 }
+export function httpUrl(value: unknown): value is string {
+  if (!text(value, 8192)) return false
+  try { const url = new URL(value); return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password }
+  catch { return false }
+}
 export function commandFrom(value: unknown): BrowserCommandRequest {
   if (!value || typeof value !== 'object') throw new BrowserFault('invalid-request')
   const { id, op, args } = value as Record<string, unknown>
@@ -24,8 +29,7 @@ export function commandFrom(value: unknown): BrowserCommandRequest {
   const a = args as Record<string, unknown>
   let valid = false
   switch (op) {
-    case 'open':
-      if (text(a.url, 8192)) { try { const url = new URL(a.url); valid = ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password } catch { /* invalid URL */ } } break
+    case 'open': valid = httpUrl(a.url); break
     case 'read': case 'tabs': case 'screenshot': case 'control.resume': valid = Object.keys(a).length === 0; break
     case 'click': case 'type': valid = opaque(a.snapshotId) && opaque(a.ref) && (op === 'click' || text(a.text, BROWSER_LIMITS.inputTextChars)); break
     case 'press': valid = text(a.key, 100) && /^[A-Za-z0-9+_ .,:;!?@#$%^&*()\[\]{}<>\/\\=\-]+$/.test(a.key); break

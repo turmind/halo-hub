@@ -61,6 +61,9 @@ export type BrowserViewerFrame =
   | { type: 'takeover' }
   | { type: 'input'; event: BrowserInputEvent }
   | { type: 'select-tab'; tabId: string }
+  | { type: 'navigate'; url: string }
+  | { type: 'back' } | { type: 'forward' } | { type: 'reload' } | { type: 'new-tab' }
+  | { type: 'close-tab'; tabId: string }
   | { type: 'visible'; visible: boolean }
 /** No "done" or "resume" viewer frame: user completion is a Halo chat message. */
 export type BrowserServerFrame =

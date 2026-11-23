@@ -4,7 +4,8 @@ import { remotePoint } from './geometry.js'
 const modifiers = (event: MouseEvent | KeyboardEvent) => Number(event.altKey) | Number(event.ctrlKey) * 2 | Number(event.metaKey) * 4 | Number(event.shiftKey) * 8
 
 export function bindInput(canvas: HTMLCanvasElement, input: HTMLTextAreaElement, viewport: () => BrowserViewport,
-  enabled: () => boolean, send: (event: BrowserInputEvent) => void, warn: (message: 'textLimit' | 'clipboard') => void) {
+  enabled: () => boolean, send: (event: BrowserInputEvent) => void, warn: (message: 'textLimit' | 'clipboard') => void,
+  activate: () => boolean, granted: () => boolean) {
   let composing = false
   let committedComposition: string | null = null
   let heldPointer: number | undefined
@@ -21,7 +22,7 @@ export function bindInput(canvas: HTMLCanvasElement, input: HTMLTextAreaElement,
   }
   let lastClick = { time: 0, x: 0, y: 0, button: -1, count: 0 }
   canvas.addEventListener('pointerdown', event => {
-    if (!enabled() || !event.isPrimary || event.button > 2) return
+    if (!event.isPrimary || event.button > 2 || !activate()) return
     event.preventDefault(); input.focus({ preventScroll: true }); canvas.setPointerCapture(event.pointerId)
     heldPointer = event.pointerId
     const repeated = event.timeStamp - lastClick.time < 500 && event.button === lastClick.button
@@ -43,7 +44,7 @@ export function bindInput(canvas: HTMLCanvasElement, input: HTMLTextAreaElement,
   canvas.addEventListener('lostpointercapture', () => { if (heldPointer !== undefined) release() })
   canvas.addEventListener('contextmenu', e => e.preventDefault())
   canvas.addEventListener('wheel', e => {
-    if (!enabled()) return
+    if (!granted()) return
     const point = remotePoint(e.clientX, e.clientY, canvas.getBoundingClientRect(), viewport())
     if (!point) return
     e.preventDefault()
@@ -53,7 +54,7 @@ export function bindInput(canvas: HTMLCanvasElement, input: HTMLTextAreaElement,
   }, { passive: false })
   for (const [dom, event] of [['keydown', 'down'], ['keyup', 'up']] as const) {
     input.addEventListener(dom, e => {
-      if (!enabled() || composing || e.isComposing || e.keyCode === 229 || e.key === 'Process' || e.key === 'Dead') return
+      if (!(event === 'down' ? activate() : enabled()) || composing || e.isComposing || e.keyCode === 229 || e.key === 'Process' || e.key === 'Dead') return
       // Paste belongs to the local textarea, then insertText; remote clipboard is not synchronized.
       if ((e.ctrlKey || e.metaKey) && ['v', 'c', 'x'].includes(e.key.toLowerCase())) {
         if (e.key.toLowerCase() !== 'v') { e.preventDefault(); warn('clipboard') }
