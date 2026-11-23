@@ -106,7 +106,7 @@ test('Canvas viewer against real backend: DPI, inputs, ownership, resume and lif
     await clickRemote(400, 400); await page.keyboard.down('Shift')
     await view.locator('#input').evaluate(node => (node as HTMLElement).blur())
     await until(async () => remote.evaluate(() => (window as any).events.some((e: any) => e.type === 'keyup' && e.key === 'Shift')))
-    assert.match((await view.locator('#mode').getAttribute('title'))!, /Agent paused/)
+    assert.match((await view.locator('#mode').getAttribute('title'))!, /agent can only view/)
     assert.match((await view.locator('#mode').getAttribute('aria-label'))!, /same Halo chat/)
   })
   await t.test('unsupported native file chooser is surfaced as a persistent error', async () => {
@@ -128,8 +128,8 @@ test('Canvas viewer against real backend: DPI, inputs, ownership, resume and lif
     assert.deepEqual(sent.filter((f: any) => f.type !== 'ready'), [])
     assert.equal(await view.getByRole('button', { name: 'Done', exact: true }).count(), 0)
   })
-  await t.test('explicit same-session new human turn resumes 10 → 2', async () => {
-    const resumed = await f.command('control.resume', {}, 'turn2')
+  await t.test('same-session action after a new human turn automatically returns 10 → 2', async () => {
+    const resumed = await f.command('press', { key: 'Escape' }, 'turn2')
     assert.equal(resumed.body.result.status, 'ok')
     await mode(view, '2 fps'); await mode(second, '2 fps')
     assert.match(await view.locator('#mode').innerText(), /Agent is driving/)
@@ -147,7 +147,7 @@ test('Canvas viewer against real backend: DPI, inputs, ownership, resume and lif
   })
   await t.test('keyboard and every shell control auto-take over before acting', async () => {
     let turn = 2
-    const resume = async () => { await f.command('control.resume', {}, `turn${++turn}`); await mode(view, '2 fps') }
+    const resume = async () => { await f.command('press', { key: 'Escape' }, `turn${++turn}`); await mode(view, '2 fps') }
     const act = async (type: string, action: () => Promise<unknown>) => {
       const start = f.frames.length
       await action(); await mode(view, '10 fps')

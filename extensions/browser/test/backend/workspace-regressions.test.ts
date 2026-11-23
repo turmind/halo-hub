@@ -42,22 +42,20 @@ test('background Set-Cookie login and logout checkpoint the session journal with
   } finally { await f.close() }
 })
 
-test('ownerless takeover is claimed by the first agent, fences its current turn and rejects other sessions', async t => {
+test('ownerless takeover lets the first claimant read and act in its current turn, rejecting other sessions', async t => {
   const { workspace, viewer } = workspaceFixture(t)
   const peer = viewer(); workspace.attach(peer, admin())
   await workspace.viewerMessage(peer, { type: 'subscribe', protocol: 1 })
   await workspace.viewerMessage(peer, { type: 'takeover' })
   assert.equal(workspace.owner, undefined); assert.equal(workspace.driver, 'user')
   const caller = session()
-  assert.equal(workspace.acquire(caller), 'waiting-for-user')
+  assert.equal(workspace.acquire(caller, true), 'ok')
+  assert.equal(workspace.driver, 'user')
   assert.equal(workspace.state().control.ownerSessionId, caller.sessionId)
   assert.equal(workspace.acquire(session('two')), 'busy')
-  assert.equal(workspace.resume(caller).status, 'waiting-for-user')
   await workspace.detach(peer)
   assert.equal(workspace.driver, 'user') // A claimed handoff survives viewer closure.
-  workspace.updateMarker(caller.bindingId, 'turn2')
-  assert.equal(workspace.resume(caller).status, 'waiting-for-user')
-  assert.equal(workspace.resume(session('one', caller.projectId, 'turn2')).status, 'ok')
+  assert.equal(workspace.acquire(caller), 'ok')
   assert.equal(workspace.driver, 'agent')
 })
 

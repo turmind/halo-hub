@@ -92,6 +92,10 @@ test('handoff cannot overlap commit, background checkpoint waits, and commit cap
   const pending = f.start(); await entered.promise
   const revision = f.workspace.revision
   assert.throws(() => f.workspace.handoff(), /unavailable/)
+  const newer = { ...f.caller, userTurnId: 'new-human' }
+  f.workspace.pendingImport = false // Exercise the commit gate independently of pending approval.
+  assert.equal(f.workspace.acquire(newer), 'waiting-for-user')
+  f.workspace.pendingImport = true
   assert.equal(f.workspace.revision, revision)
   let scanned = false
   const background = f.workspace.serial(async () => { await f.workspace.checkpointNow(); scanned = true })

@@ -7,6 +7,9 @@ import type { CDPSession } from 'playwright'
 
 test('command ingress rejects arbitrary CDP, invalid URLs, refs, and unbounded inputs', () => {
   for (const body of [null, { id: 'x', op: 'eval', args: {} }, { id: 'x', op: 'open', args: { url: 'file:///profile' } }, { id: 'x', op: 'open', args: { url: 'https://user:password@example.invalid' } }, { id: 'x', op: 'type', args: { snapshotId: 'snap', ref: 'r1', text: 'x'.repeat(4097) } }, { id: 'x', op: 'scroll', args: { dx: Infinity, dy: 0 } }]) assert.throws(() => commandFrom(body))
+  assert.throws(() => commandFrom({ id: 'x', op: 'control.resume', args: {} }))
+  assert.throws(() => commandFrom({ id: 'x', op: 'close-tab', args: { tabId: '../invalid' } }))
+  assert.equal(commandFrom({ id: 'x', op: 'close-tab', args: { tabId: 'tab-1' } }).op, 'close-tab')
   assert.throws(() => callerFrom({ 'x-halo-caller': 'not-json' }))
   assert.equal(safeUrl('https://user:password@example.invalid/?q=fixture'), 'https://example.invalid/?q=fixture')
   assert.ok(!JSON.stringify(publicError(new Error('manufactured-cookie-canary'))).includes('canary'))

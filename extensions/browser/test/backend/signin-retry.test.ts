@@ -28,7 +28,6 @@ for (const outcome of ['cancelled', 'unavailable'] as const) test(`explicit retr
     const blocked = await backend.command(caller, { ...request, id: 'too-early' })
     assert.ok('status' in blocked && blocked.status === 'waiting-for-user')
     const newer = session('one', caller.projectId, 'turn2')
-    await backend.command(newer, { id: 'resume', op: 'control.resume', args: {} })
     assert.deepEqual(await backend.command(newer, request), first) // Same request ID is still a retry of the transport only.
     assert.equal(imports, 1)
     const retried = await backend.command(newer, { ...request, id: 'explicit-retry' })
@@ -61,7 +60,6 @@ test('equivalent site spellings deduplicate pending and successful imports but n
     assert.ok(completed.ok && 'result' in completed && 'status' in completed.result && completed.result.status === 'imported')
     assert.deepEqual(await backend.command(newer, equivalent), completed); assert.equal(imports, 1)
     await assert.rejects(backend.command(newer, { ...equivalent, id: request.id }), /Invalid/)
-    await backend.command(newer, { id: 'resume', op: 'control.resume', args: {} })
     await backend.command(newer, { ...equivalent, id: 'different-source', args: { ...equivalent.args, from: 'two' } })
     assert.equal(imports, 2)
   } finally { release(); await backend.close(); await rm(directory, { recursive: true, force: true }) }
@@ -81,8 +79,6 @@ test('independent HTTP import requests share the successful implicit source alia
     const first = await http(socket, session(), '/command', { id: 'implicit', op: 'signin-import', args: { site: 'example.com' } })
     assert.equal(first.body.result.status, 'imported')
     const newer = session('one', session().projectId, 'turn2')
-    const resumed = await http(socket, newer, '/command', { id: 'resume', op: 'control.resume', args: {} })
-    assert.equal(resumed.body.result.status, 'ok')
     const second = await http(socket, newer, '/command', { id: 'explicit', op: 'signin-import', args: { site: 'https://EXAMPLE.COM/path', from: 'resolved-source' } })
     assert.deepEqual(second.body, first.body); assert.equal(imports, 1); assert.equal(services, 1)
     await http(socket, newer, '/command', { id: 'distinct', op: 'signin-import', args: { site: 'example.com', from: 'other-source' } })

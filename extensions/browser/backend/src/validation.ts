@@ -30,11 +30,11 @@ export function commandFrom(value: unknown): BrowserCommandRequest {
   let valid = false
   switch (op) {
     case 'open': valid = httpUrl(a.url); break
-    case 'read': case 'tabs': case 'screenshot': case 'control.resume': valid = Object.keys(a).length === 0; break
+    case 'read': case 'tabs': case 'screenshot': valid = Object.keys(a).length === 0; break
     case 'click': case 'type': valid = opaque(a.snapshotId) && opaque(a.ref) && (op === 'click' || text(a.text, BROWSER_LIMITS.inputTextChars)); break
     case 'press': valid = text(a.key, 100) && /^[A-Za-z0-9+_ .,:;!?@#$%^&*()\[\]{}<>\/\\=\-]+$/.test(a.key); break
     case 'scroll': valid = [a.dx, a.dy].every(n => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 10000); break
-    case 'select-tab': valid = opaque(a.tabId); break
+    case 'select-tab': case 'close-tab': valid = opaque(a.tabId); break
     case 'handoff': valid = a.reason === undefined || text(a.reason, 1000); break
     case 'signin-sources': case 'signin-import': valid = text(a.site, 2048) && a.site.length > 0 && (a.from === undefined || text(a.from, 512)); break
   }

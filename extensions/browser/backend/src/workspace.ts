@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { writeFile, rm, readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { parseDocument, visit, isScalar, Scalar } from 'yaml'
 import type { BrowserContext, CDPSession, ElementHandle, Page } from 'playwright'
 import type { ExtensionCaller, ExtensionSessionCaller } from '../../contracts/halo-core/extension-notices.js'
-import { BROWSER_LIMITS, BROWSER_VIEWPORT, BROWSER_JPEG_QUALITY, type BrowserCommandRequest, type BrowserCommandResults, type BrowserCommandName, type BrowserState, type BrowserRuntimeInfo, type BrowserServerFrame, type BrowserPageRead, type BrowserViewerFrame } from './protocol.js'
+import { BROWSER_LIMITS, BROWSER_VIEWPORT, BROWSER_JPEG_QUALITY, isReadCommand, type BrowserCommandRequest, type BrowserCommandResults, type BrowserCommandName, type BrowserState, type BrowserRuntimeInfo, type BrowserServerFrame, type BrowserPageRead, type BrowserViewerFrame } from './protocol.js'
 import { BrowserFault, BrowserLaunchFault, checkSignal, safeUrl } from './errors.js'
 import { ProfileStore } from './profile-store.js'
 import { FrameDelivery, type FramePeer } from './frame-delivery.js'
@@ -76,29 +77,28 @@ export class WorkspaceBrowser {
     if (this.owner?.bindingId === bindingId) this.latestMarkers.set(bindingId, marker)
   }
   owns(caller: ExtensionCaller) { return caller.projectId === this.projectId && caller.sessionId === this.owner?.sessionId }
-  acquire(caller: ExtensionSessionCaller): 'ok' | 'busy' | 'waiting-for-user' {
-    if (this.closeRequested || this.closing) throw new BrowserFault('unavailable')
+  acquire(caller: ExtensionSessionCaller, readOnly = false): 'ok' | 'busy' | 'waiting-for-user' {
     if (this.owner && this.owner.sessionId !== caller.sessionId) return 'busy'
+    if (this.closeRequested && this.driver === 'user' && !readOnly) return 'waiting-for-user'
+    if (this.closeRequested || this.closing) throw new BrowserFault('unavailable')
     if (this.driver === 'user') {
-      if (!this.owner) { this.owner = caller; this.fence = caller.userTurnId; this.epoch++; this.touch(); this.broadcast() }
-      return 'waiting-for-user'
+      if (!this.owner) {
+        // UUID markers cannot order an ownerless takeover against an existing turn.
+        // Accept the first claimant's current turn rather than requiring another user message.
+        this.owner = caller; this.fence = null; this.epoch++; this.touch(); this.broadcast()
+      }
+      if (readOnly) { this.touch(); return 'ok' }
+      const latest = this.latestMarkers.get(this.owner.bindingId)
+      if (this.pendingImport || this.commit || !caller.userTurnId || caller.userTurnId === this.fence || latest && caller.userTurnId !== latest) return 'waiting-for-user'
+      this.owner = caller; this.driver = 'agent'; this.epoch++; this.inputOwner = undefined
+      void this.input?.send({ kind: 'release-all' }).catch(() => {})
+      this.delivery.mode(false); this.broadcast()
     }
     if (!this.owner) { this.owner = caller; this.driver = 'agent'; this.epoch++; this.broadcast() }
     else this.owner = caller
     this.touch(); return 'ok'
   }
-  resume(caller: ExtensionSessionCaller) {
-    if (!this.owner || !this.owns(caller)) throw new BrowserFault('forbidden')
-    const latest = this.latestMarkers.get(this.owner.bindingId)
-    if (this.pendingImport || this.commit || this.closeRequested || this.driver === 'user' && (!caller.userTurnId || caller.userTurnId === this.fence || latest && caller.userTurnId !== latest)) return { status: 'waiting-for-user' as const }
-    if (this.driver === 'user') {
-      this.owner = caller; this.driver = 'agent'; this.epoch++; this.inputOwner = undefined
-      void this.input?.send({ kind: 'release-all' }).catch(() => {})
-      this.delivery.mode(false); this.broadcast()
-    }
-    this.touch(); return { status: 'ok' as const }
-  }
-  handoff(caller?: ExtensionSessionCaller, reason = 'Take control in Browser, then reply in the same Halo chat.') {
+  handoff(caller?: ExtensionSessionCaller, reason = 'Interact with the browser directly in Canvas, then reply in this chat when finished.') {
     if (caller && !this.owns(caller)) throw new BrowserFault('forbidden')
     if (this.commit || this.closeRequested) throw new BrowserFault('unavailable')
     if (this.driver !== 'user') {
@@ -191,6 +191,14 @@ export class WorkspaceBrowser {
     const page = await this.context!.newPage(); this.registerPage(page)
     await this.select([...this.pages].find(([, candidate]) => candidate === page)![0])
   }
+  private async closeTab(tabId: string) {
+    const page = this.pages.get(tabId)
+    if (!page) throw new BrowserFault('not-found')
+    // Select the replacement before close so the page-close listener cannot queue a stale selection.
+    if (this.pages.size === 1) await this.newTab()
+    else if (this.activeTabId === tabId) await this.select([...this.pages.keys()].find(id => id !== tabId)!)
+    await page.close()
+  }
   private async select(tabId: string) {
     const page = this.pages.get(tabId)
     if (!page) throw new BrowserFault('not-found')
@@ -271,14 +279,7 @@ export class WorkspaceBrowser {
             case 'forward': await this.page().goForward({ waitUntil: 'domcontentloaded' }); break
             case 'reload': await this.page().reload({ waitUntil: 'domcontentloaded' }); break
             case 'new-tab': await this.newTab(); break
-            case 'close-tab': {
-              const page = this.pages.get(frame.tabId)
-              if (!page) throw new BrowserFault('not-found')
-              // Select the replacement before close so the page-close listener cannot queue a stale selection.
-              if (this.pages.size === 1) await this.newTab()
-              else if (this.activeTabId === frame.tabId) await this.select([...this.pages.keys()].find(id => id !== frame.tabId)!)
-              await page.close(); break
-            }
+            case 'close-tab': await this.closeTab(frame.tabId); break
             case 'input': await this.input?.send(event!); break
             default: throw new BrowserFault('invalid-request')
           }
@@ -325,7 +326,22 @@ export class WorkspaceBrowser {
     this.clearRefs()
     const page = this.page(); const snapshotId = randomUUID(); this.snapshotId = snapshotId
     const text = await page.locator('body').innerText()
-    const aria = await page.locator('body').ariaSnapshot()
+    // Playwright 1.61 includes raw password values in ARIA. Resolve value-bearing nodes by
+    // snapshot identity and redact only password nodes; never change the live form's values.
+    const document = parseDocument(await page.locator('body').ariaSnapshot({ mode: 'ai' }))
+    if (document.errors.length) throw new BrowserFault('operation-failed')
+    const values: Array<{ id: string; mask: () => void }> = []
+    visit(document, { Pair: (_key, pair) => {
+      if (!isScalar(pair.key) || typeof pair.key.value !== 'string' || !isScalar(pair.value)) return
+      const match = / \[ref=(e\d+)\](?=(?: \[[^\]]*\])*$)/.exec(pair.key.value)
+      if (!match) return
+      values.push({ id: match[1], mask: () => { pair.value = new Scalar('••••') } })
+      pair.key.value = pair.key.value.replace(match[0], '')
+    } })
+    for (const value of values) {
+      if (await page.locator(`aria-ref=${value.id}`).evaluate(node => node instanceof HTMLInputElement && node.type === 'password')) value.mask()
+    }
+    const aria = document.toString({ lineWidth: 0 })
     const refs: BrowserPageRead['refs'] = []
     const targets = page.locator('a,button,input,textarea,select,[role],[contenteditable="true"]')
     const targetCount = await targets.count()
@@ -340,11 +356,10 @@ export class WorkspaceBrowser {
     return { tabId: this.activeTabId!, url: safeUrl(page.url()), title: (await page.title()).slice(0, 200), text: text.slice(0, BROWSER_LIMITS.pageTextChars), ariaSnapshot: aria.slice(0, BROWSER_LIMITS.snapshotChars), snapshotId, refs, truncated: text.length > BROWSER_LIMITS.pageTextChars || aria.length > BROWSER_LIMITS.snapshotChars || targetCount > 200 }
   }
   async command(caller: ExtensionSessionCaller, request: BrowserCommandRequest, signal: AbortSignal, epoch: number): Promise<BrowserCommandResults[BrowserCommandName]> {
-    if (request.op === 'control.resume') return this.resume(caller)
     if (request.op === 'handoff') { this.handoff(caller, request.args.reason); return { status: 'waiting-for-user' } }
     await this.ensureContext()
     return this.serial(async () => {
-      const fence = () => { checkSignal(signal); if (!this.owns(caller) || epoch !== this.epoch || this.driver !== 'agent') throw new BrowserFault('forbidden') }
+      const fence = () => { checkSignal(signal); if (!this.owns(caller) || epoch !== this.epoch || !isReadCommand(request.op) && this.driver !== 'agent') throw new BrowserFault('forbidden') }
       fence()
       let result: BrowserCommandResults[BrowserCommandName]
       switch (request.op) {
@@ -369,6 +384,7 @@ export class WorkspaceBrowser {
         case 'press': await this.page().keyboard.press(request.args.key); result = { status: 'ok' }; break
         case 'scroll': await this.page().mouse.wheel(request.args.dx, request.args.dy); result = { status: 'ok' }; break
         case 'select-tab': await this.select(request.args.tabId); result = { status: 'ok' }; break
+        case 'close-tab': await this.closeTab(request.args.tabId); result = { status: 'ok' }; break
         case 'tabs': result = { tabs: this.state().tabs, activeTabId: this.activeTabId }; break
         case 'screenshot': {
           const page = this.page(); const deadline = performance.now() + 10000
@@ -401,19 +417,17 @@ export class WorkspaceBrowser {
         default: throw new BrowserFault('invalid-request')
       }
       fence()
-      if (!['read', 'tabs', 'screenshot'].includes(request.op)) await this.checkpointNow()
+      if (!isReadCommand(request.op)) await this.checkpointNow()
       fence()
       this.touch(); this.broadcast(); return result
     })
   }
   async artifact(caller: ExtensionSessionCaller, id: string): Promise<Buffer> {
-    if (!this.owns(caller) || this.driver !== 'agent') throw new BrowserFault('forbidden')
+    if (!this.owns(caller)) throw new BrowserFault('forbidden')
     await this.sweepArtifacts()
     const artifact = this.artifacts.get(id)
     if (!artifact || artifact.sessionId !== caller.sessionId) throw new BrowserFault('not-found')
-    const epoch = this.epoch; const data = await readFile(artifact.file)
-    if (epoch !== this.epoch || this.driver !== 'agent') throw new BrowserFault('forbidden')
-    return data
+    return readFile(artifact.file)
   }
   private async sweepArtifacts() {
     const directory = join(this.store.directory, 'artifacts')

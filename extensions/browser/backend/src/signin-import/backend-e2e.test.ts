@@ -68,7 +68,7 @@ test('manufactured Linux import through BrowserBackend, scoped attributes, check
     assert.ok(cookies.some(c => c.name === 'unrelated-target')); assert.ok(!cookies.some(c => c.name === 'unrelated-source'))
     assert.equal(cookies.find(c => c.name === 'session')?.expires, -1); assert.equal(cookies.find(c => c.name === 'session')?.sameSite, 'Strict')
     assert.equal(JSON.stringify([messages, listed.body, result.body]).includes(canary), false)
-    assert.equal((await http(socket, newer, '/command', { id: 'resume', op: 'control.resume', args: {} })).body.result.status, 'ok')
+    assert.equal((await http(socket, newer, '/command', { id: 'continue', op: 'scroll', args: { dx: 0, dy: 1 } })).body.result.status, 'ok')
     await backend.close(); backend = undefined
     assert.equal((await readdir(join(dataDir, 'workspaces'))).length, 1)
     backend = makeBackend(); await backend.listen(socket)

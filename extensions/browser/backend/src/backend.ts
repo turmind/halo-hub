@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { chmod } from 'node:fs/promises'
 import { WebSocket, WebSocketServer } from 'ws'
 import type { ExtensionCaller, ExtensionSessionCaller, ExtensionBackendHostMessage } from '../../contracts/halo-core/extension-notices.js'
-import { BROWSER_LIMITS, type BrowserCommandRequest, type BrowserCommandResponse, type BrowserOperation, type BrowserServerFrame, type BrowserViewerFrame } from './protocol.js'
+import { BROWSER_LIMITS, isReadCommand, type BrowserCommandRequest, type BrowserCommandResponse, type BrowserOperation, type BrowserServerFrame, type BrowserViewerFrame } from './protocol.js'
 import { WorkspaceBrowser, type Viewer } from './workspace.js'
 import { createBrowserLauncher, type BrowserLauncher } from './browser-launcher.js'
 import { Hooks, type IpcSend } from './hooks.js'
@@ -123,7 +123,11 @@ export class BrowserBackend {
     try {
       const caller = callerFrom(req.headers); const url = new URL(req.url ?? '/', 'http://private')
       if (req.method === 'GET' && url.pathname === '/status') {
-        this.json(res, this.workspaces.get(caller.projectId)?.runtime ?? { protocol: 1, status: 'starting' }); return
+        const workspace = this.workspace(caller)
+        if (caller.kind === 'session' && workspace.acquire(caller, true) === 'busy') {
+          this.json(res, { status: 'busy', ownerSessionId: workspace.owner!.sessionId }); return
+        }
+        this.json(res, workspace.runtime); return
       }
       if (req.method === 'POST' && url.pathname === '/view') {
         if (caller.kind !== 'admin') throw new BrowserFault('forbidden')
@@ -144,7 +148,7 @@ export class BrowserBackend {
         const operation = candidates[0]
         if (!operation || operation.expires < Date.now()) throw new BrowserFault('not-found')
         const command = operation.operation.status === 'completed' ? operation.operation.response.op : operation.operation.op
-        if (operation.workspace.driver === 'user' && command !== 'signin-import') throw new BrowserFault('forbidden')
+        if (operation.workspace.driver === 'user' && command !== 'signin-import' && !isReadCommand(command)) throw new BrowserFault('forbidden')
         if (caller.kind === 'session' && command === 'signin-import' && operation.operation.status === 'completed' && caller.userTurnId === operation.caller.userTurnId && operation.workspace.driver === 'user') throw new BrowserFault('forbidden')
         this.json(res, operation.operation); return
       }
@@ -182,7 +186,7 @@ export class BrowserBackend {
         return this.wait(prior, { ...request, id: prior.operation.id })
       }
     }
-    const blocked = request.op === 'control.resume' ? workspace.owner && workspace.owner.sessionId !== caller.sessionId ? 'busy' : undefined : workspace.acquire(caller)
+    const blocked = workspace.acquire(caller, isReadCommand(request.op))
     if (blocked === 'busy') return { id: request.id, op: request.op, ok: false, status: 'busy', ownerSessionId: workspace.owner!.sessionId }
     if (blocked === 'waiting-for-user') return { id: request.id, op: request.op, ok: false, status: 'waiting-for-user' }
     if (existing) return this.wait(existing, request)
@@ -238,7 +242,7 @@ export class BrowserBackend {
         if (request.op === 'signin-sources' && (workspace.revision !== operation.epoch || workspace.driver !== 'agent')) throw new BrowserFault('forbidden')
       } finally { if (request.op === 'signin-import') workspace.pendingImport = false; await service?.dispose() }
     } else {
-      if (!['control.resume', 'handoff'].includes(request.op)) await workspace.ensureContext()
+      if (request.op !== 'handoff') await workspace.ensureContext()
       checkSignal(controller.signal)
       const timeout = setTimeout(() => { controller.abort(); void this.remove(workspace) }, this.options.commandTimeoutMs ?? BROWSER_LIMITS.commandTimeoutMs)
       try { result = await workspace.command(caller, request, controller.signal, operation.epoch) } finally { clearTimeout(timeout) }

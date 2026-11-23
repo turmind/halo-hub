@@ -119,11 +119,6 @@ export interface BrowserScreenshot {
   height: number
 }
 export type BrowserActionResult = { status: 'ok' }
-export type BrowserControlResult =
-  | BrowserActionResult
-  | { status: 'busy'; ownerSessionId: string }
-  | { status: 'waiting-for-user' }
-  | { status: 'unavailable'; reason: string }
 export interface BrowserCommandArgs {
   open: { url: string }
   read: Record<string, never>
@@ -135,8 +130,7 @@ export interface BrowserCommandArgs {
   tabs: Record<string, never>
   'select-tab': { tabId: string }
   handoff: { reason?: string }
-  /** Internal CLI operation after interpreting a new human chat reply. */
-  'control.resume': Record<string, never>
+  'close-tab': { tabId: string }
   'signin-sources': { site: string }
   'signin-import': { site: string; from?: string }
 }
@@ -151,11 +145,12 @@ export interface BrowserCommandResults {
   tabs: { tabs: BrowserTab[]; activeTabId: string | null }
   'select-tab': BrowserActionResult
   handoff: { status: 'waiting-for-user' }
-  'control.resume': BrowserControlResult
+  'close-tab': BrowserActionResult
   'signin-sources': SigninSource[]
   'signin-import': SigninImportResult
 }
 export type BrowserCommandName = keyof BrowserCommandArgs
+export const isReadCommand = (op: BrowserCommandName) => ['read', 'tabs', 'screenshot'].includes(op)
 /** POST /command. Session identity comes only from X-Halo-Caller. */
 export type BrowserCommandRequest<K extends BrowserCommandName = BrowserCommandName> = {
   [Op in K]: { id: string; op: Op; args: BrowserCommandArgs[Op] }

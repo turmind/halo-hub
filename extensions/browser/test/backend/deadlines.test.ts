@@ -47,10 +47,10 @@ test('queued agent work is fenced even after human resumes before queued work st
     let release!: () => void
     const gate = workspace.serial(() => new Promise<void>(resolve => { release = resolve }))
     await sleep(10)
-    const queued = workspace.command(a, { id: 'queued', op: 'read', args: {} }, new AbortController().signal, epoch)
+    const queued = workspace.command(a, { id: 'queued', op: 'scroll', args: { dx: 0, dy: 1 } }, new AbortController().signal, epoch)
     workspace.handoff(a)
     workspace.updateMarker(a.bindingId, 'turn2')
-    assert.equal(workspace.resume(session('one', a.projectId, 'turn2')).status, 'ok')
+    assert.equal(workspace.acquire(session('one', a.projectId, 'turn2')), 'ok')
     release(); await gate
     await assert.rejects(queued, /does not control/)
   } finally { await workspace.close(); hooks.close(); await rm(directory, { recursive: true, force: true }) }
@@ -62,14 +62,14 @@ test('takeover records newest owner marker, not old bearer marker', async () => 
   const workspace = new WorkspaceBrowser('/manufactured/workspace', directory, fixtureLauncher, hooks, () => {}, () => {})
   try {
     const a = session(); workspace.acquire(a); workspace.updateMarker(a.bindingId, 'turn2'); workspace.handoff()
-    assert.equal(workspace.resume(a).status, 'waiting-for-user')
-    assert.equal(workspace.resume(session('one', a.projectId, 'turn2')).status, 'waiting-for-user')
+    assert.equal(workspace.acquire(a), 'waiting-for-user')
+    assert.equal(workspace.acquire(session('one', a.projectId, 'turn2')), 'waiting-for-user')
     workspace.updateMarker(a.bindingId, 'turn3')
-    assert.equal(workspace.resume(session('one', a.projectId, 'turn3')).status, 'ok')
+    assert.equal(workspace.acquire(session('one', a.projectId, 'turn3')), 'ok')
   } finally { await workspace.close(); hooks.close(); await rm(directory, { recursive: true, force: true }) }
 })
 
-test('injected sign-in confirmation blocks resume, accepts one bound answer and does not fabricate chat', async () => {
+test('injected sign-in confirmation blocks automatic control return, accepts one bound answer and does not fabricate chat', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'browser-signin-port-'))
   const messages: unknown[] = []; let copies = 0; let disposed = 0
   const backend = new BrowserBackend({ dataDir: directory, send: message => messages.push(message), commandTimeoutMs: 50, signin: host => ({
@@ -86,8 +86,8 @@ test('injected sign-in confirmation blocks resume, accepts one bound answer and 
     const request = { id: 'import', op: 'signin-import' as const, args: { site: '127.0.0.1' } }
     const result = await backend.command(a, request)
     assert.equal(result.ok && 'result' in result && !Array.isArray(result.result) && 'status' in result.result && result.result.status, 'waiting-for-user')
-    const resumed = await backend.command(session('one', a.projectId, 'turn2'), { id: 'resume', op: 'control.resume', args: {} })
-    assert.equal(resumed.ok && 'result' in resumed && !Array.isArray(resumed.result) && 'status' in resumed.result && resumed.result.status, 'waiting-for-user')
+    const blocked = await backend.command(session('one', a.projectId, 'turn2'), { id: 'continue', op: 'scroll', args: { dx: 0, dy: 1 } })
+    assert.equal('status' in blocked && blocked.status, 'waiting-for-user')
     const notice = messages.find(message => (message as any).notice?.id === 'copy-fixture') as Extract<ExtensionNoticeBackendMessage, { type: 'halo:notice' }>
     backend.receive({ type: 'halo:notice:accepted', id: notice.notice.id, requestId: notice.requestId, generation: 'g1', expiresAt: new Date(Date.now() + 1000).toISOString() })
     backend.receive({ type: 'halo:notice:result', id: notice.notice.id, generation: 'g1', decision: 'confirm' })

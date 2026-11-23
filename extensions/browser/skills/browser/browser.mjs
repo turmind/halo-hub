@@ -30,7 +30,7 @@ async function main() {
   const args = process.argv.slice(2)
   const command = args.shift()
   if (!command || command === '--help') {
-    console.log('browser: open URL | read | click SNAPSHOT:REF | type SNAPSHOT:REF TEXT | press KEY | scroll DX DY | screenshot FILE | tabs | select-tab ID | handoff [REASON] | signin-sources SITE | signin-import SITE [--from SOURCE] | resume | status | operation ID')
+    console.log('browser: open URL | read | click SNAPSHOT:REF | type SNAPSHOT:REF TEXT | press KEY | scroll DX DY | screenshot FILE | tabs | select-tab ID | close-tab ID | handoff [REASON] | signin-sources SITE | signin-import SITE [--from SOURCE] | status | operation ID')
     return
   }
   let op = command; let payload = {}; let file
@@ -38,7 +38,6 @@ async function main() {
   switch (command) {
     case 'open': exact(1); payload = { url: args[0] }; break
     case 'read': case 'tabs': case 'status': exact(0); break
-    case 'resume': exact(0); op = 'control.resume'; break
     case 'click': case 'type': {
       exact(command === 'click' ? 1 : 2)
       const ref = args[0].split(':')
@@ -47,7 +46,7 @@ async function main() {
     }
     case 'press': exact(1); payload = { key: args[0] }; break
     case 'scroll': exact(2); payload = { dx: Number(args[0]), dy: Number(args[1]) }; if (!Object.values(payload).every(Number.isFinite)) fail('Scroll offsets must be numbers.'); break
-    case 'select-tab': exact(1); payload = { tabId: args[0] }; break
+    case 'select-tab': case 'close-tab': exact(1); payload = { tabId: args[0] }; break
     case 'screenshot': exact(1); file = resolve(args[0]); break
     case 'handoff': if (args.length > 1) fail('Quote the handoff reason.'); payload = args[0] ? { reason: args[0] } : {}; break
     case 'signin-sources': exact(1); payload = { site: args[0] }; break
