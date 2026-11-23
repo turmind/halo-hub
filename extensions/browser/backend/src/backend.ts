@@ -225,6 +225,10 @@ export class BrowserBackend {
     if (request.op === 'signin-import' || request.op === 'signin-sources') {
       await workspace.inputReleased
       checkSignal(controller.signal)
+      if (!workspace.owns(caller) || workspace.driver !== 'agent' || workspace.revision !== operation.epoch) {
+        operation.importScope = undefined
+        return { id: request.id, op: request.op, ok: false, status: 'waiting-for-user' }
+      }
       if (!this.options.signin) {
         if (request.op === 'signin-import') return { id: request.id, op: 'signin-import', ok: true, result: { status: 'unavailable', reason: 'Existing sign-in service is not installed. Sign in inside Browser Canvas.' } }
         throw new BrowserFault('unavailable')
@@ -257,9 +261,11 @@ export class BrowserBackend {
   private async wait(operation: Operation, request: BrowserCommandRequest): Promise<BrowserCommandResponse> {
     let timer: ReturnType<typeof setTimeout> | undefined
     const pending = new Promise<BrowserCommandResponse>(resolve => {
-      const wake = () => resolve(request.op === 'signin-import' && operation.operation.status === 'waiting-for-user'
-        ? { id: request.id, op: 'signin-import', ok: true, result: { status: 'waiting-for-user' } }
-        : { id: request.id, op: request.op, ok: true, status: 'running' })
+      const wake = () => resolve(operation.workspace.runtime.status === 'unavailable'
+        ? { id: request.id, op: request.op, ok: false, error: publicError(new BrowserFault('unavailable')) } as BrowserCommandResponse
+        : request.op === 'signin-import' && operation.operation.status === 'waiting-for-user'
+          ? { id: request.id, op: 'signin-import', ok: true, result: { status: 'waiting-for-user' } }
+          : { id: request.id, op: request.op, ok: true, status: 'running' })
       operation.wake = wake
       timer = setTimeout(wake, this.options.commandTimeoutMs ?? BROWSER_LIMITS.commandTimeoutMs)
       if (operation.operation.status === 'waiting-for-user') wake()

@@ -92,7 +92,20 @@ export class WorkspaceBrowser {
       if (this.pendingImport || this.commit || !caller.userTurnId || caller.userTurnId === this.fence || latest && caller.userTurnId !== latest) return 'waiting-for-user'
       this.owner = caller; this.driver = 'agent'; this.epoch++; this.inputOwner = undefined
       // Queue behind in-flight viewer input; agent execution awaits this release barrier.
-      this.inputReleased = this.serial(async () => { await this.input?.send({ kind: 'release-all' }) })
+      this.inputReleased = this.serial(async () => {
+        const page = this.activeTabId ? this.pages.get(this.activeTabId) : undefined
+        const input = this.input
+        try { await input?.send({ kind: 'release-all' }) }
+        catch {
+          // Only a confirmed closed target can discard held state; do not infer closure from error text.
+          if (page?.isClosed()) { if (this.input === input) this.input = undefined; return }
+          this.inputReleased = Promise.resolve(); this.input = undefined; this.epoch++; this.clearRefs()
+          this.runtime = { protocol: 1, status: 'unavailable', reason: 'Browser input cleanup failed. Open Browser again to restart it.' }
+          // Preserve the last checkpoint, as on unexpected exit; do not save the failed live context.
+          this.forceClose(); this.broadcast({ type: 'runtime', runtime: this.runtime }); this.expired()
+          throw new BrowserFault('unavailable')
+        }
+      })
       this.delivery.mode(false); this.broadcast()
     }
     if (!this.owner) { this.owner = caller; this.driver = 'agent'; this.epoch++; this.broadcast() }
@@ -328,7 +341,7 @@ export class WorkspaceBrowser {
     const page = this.page(); const snapshotId = randomUUID(); this.snapshotId = snapshotId
     const before = await this.passwordValues(page)
     const text = await page.locator('body').innerText()
-    const aria = await page.locator('body').ariaSnapshot({ mode: 'ai' })
+    const aria = (await page.locator('body').ariaSnapshot({ mode: 'ai' })).replace(/\s*\[ref=[^\]]+\]/g, '')
     const refs: BrowserPageRead['refs'] = []
     const targets = page.locator('a,button,input,textarea,select,[role],[contenteditable="true"]')
     const targetCount = await targets.count()
@@ -343,18 +356,26 @@ export class WorkspaceBrowser {
     const after = await this.passwordValues(page)
     if (before.size !== after.size || [...before].some(value => !after.has(value))) throw new BrowserFault('operation-failed')
     if (this.snapshotId !== snapshotId) throw new BrowserFault('stale-ref')
-    // ARIA quotes values and derived names. Include their escaped spellings, not only raw text.
-    const passwords = [...new Set([...before].flatMap(value => {
+    // Match Playwright 1.61 normalizeWhiteSpace, plus zero-width removal and URL serialization.
+    const normalize = (value: string) => value.replace(/[\u200b\u00ad]/g, '').trim().replace(/\s+/g, ' ')
+    const variants = [...before].flatMap(value => {
+      const visible = value.replace(/[\u200b-\u200d\ufeff\u2060]/g, '')
+      return [value, normalize(value), visible, normalize(visible)]
+    }).flatMap(value => [value, value.replace(/[\t\r\n]/g, '')]) // URL parsing drops ASCII tabs/newlines before encoding.
+      .flatMap(value => [value, value.replace(/\s*\[ref=[^\]]+\]/g, ''), encodeURIComponent(value), encodeURI(value)])
+      .flatMap(value => [value, value.replace(/%[0-9a-f]{2}/gi, hex => hex.toLowerCase()), value.replace(/%[0-9a-f]{2}/gi, hex => hex.toUpperCase())])
+    // ARIA quotes values and derived names. Include each variant's escaped spellings too.
+    const passwords = [...new Set(variants.filter(Boolean).flatMap(value => {
       const quoted = JSON.stringify(value).slice(1, -1)
       const yamlQuoted = quoted.replace(/\\u00([0-9a-f]{2})|[\x7f-\x9f]/g, (char, hex: string | undefined) => '\\x' + (hex ?? char.charCodeAt(0).toString(16)))
       return [value, quoted, yamlQuoted, value.replace(/'/g, "''"), quoted.replace(/'/g, "''")]
     }))].sort((a, b) => b.length - a.length)
     const redact = (value: string) => { for (const password of passwords) value = value.split(password).join('••••'); return value }
-    // Redact before truncating or stripping internal refs: both can split a password value.
-    for (const key of ['tabId', 'url', 'title', 'text', 'ariaSnapshot', 'snapshotId'] as const) result[key] = redact(result[key])
-    for (const ref of refs) { ref.id = redact(ref.id); ref.role = redact(ref.role); ref.name = redact(ref.name).slice(0, 160) }
+    // Strip ARIA refs first, then redact content before truncation; protocol IDs and roles stay intact.
+    for (const key of ['url', 'title', 'text', 'ariaSnapshot'] as const) result[key] = redact(result[key])
+    for (const ref of refs) ref.name = redact(ref.name).slice(0, 160)
     result.title = result.title.slice(0, 200); result.text = result.text.slice(0, BROWSER_LIMITS.pageTextChars)
-    result.ariaSnapshot = result.ariaSnapshot.replace(/\s*\[ref=[^\]]+\]/g, '').slice(0, BROWSER_LIMITS.snapshotChars)
+    result.ariaSnapshot = result.ariaSnapshot.slice(0, BROWSER_LIMITS.snapshotChars)
     return result
   }
   private async passwordValues(page: Page): Promise<Set<string>> {
@@ -364,6 +385,7 @@ export class WorkspaceBrowser {
     }))
     // Locators and Playwright's ARIA snapshot traverse open, not closed, shadow roots.
     // Closed-root values are unavailable; values copied outside those roots cannot be recognized here.
+    // Best-effort samples miss A→B→A changes, empty→value→empty, and frames mounted then removed between samples.
     return new Set(values.flat().filter(Boolean))
   }
   async command(caller: ExtensionSessionCaller, request: BrowserCommandRequest, signal: AbortSignal, epoch: number): Promise<BrowserCommandResults[BrowserCommandName]> {

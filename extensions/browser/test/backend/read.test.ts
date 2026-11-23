@@ -86,6 +86,49 @@ test('read redacts collected password values across frames and every output stri
   })
 })
 
+test('stable password transformations are masked only in content, preserving actionable IDs', async t => {
+  const f = await fixture(); t.after(() => f.close())
+  const caller = session()
+  await http(f.socket, caller, '/command', { id: 'open', op: 'open', args: { url: f.origin } })
+  const page = f.contexts[0].pages()[0]
+  const read = () => http(f.socket, caller, '/command', { id: crypto.randomUUID(), op: 'read', args: {} })
+  const cases = [
+    ['spaces', 'SPACED  CANARY'], ['trim', '  TRIM CANARY  '], ['tab', 'TAB\tCANARY'],
+    ['zero-width', 'ZERO\u200b\u200c\u200d\ufeff\u2060CANARY'], ['soft-hyphen', 'SOFT\u00adCANARY'],
+    ['quote', 'quote"CANARY'], ['Chinese', '中文口令'],
+  ]
+  for (const [name, password] of cases) await t.test(name, async () => {
+    const normalized = password.replace(/[\u200b\u00ad]/g, '').trim().replace(/\s+/g, ' ')
+    const visible = password.replace(/[\u200b-\u200d\ufeff\u2060]/g, '')
+    const forms = [...new Set([password, normalized, visible, visible.replace(/[\u200b\u00ad]/g, '').trim().replace(/\s+/g, ' ')])]
+      .flatMap(value => [value, encodeURIComponent(value), encodeURI(value), encodeURIComponent(value).replace(/%[0-9A-F]{2}/g, hex => hex.toLowerCase())])
+    await page.setContent('<input type="password"><p></p><button>X</button>')
+    await page.locator('input').fill(password)
+    // Every known transformation is echoed in all four content surfaces; password sampling stays stable.
+    for (const form of new Set(forms)) {
+      await page.evaluate(form => { document.querySelector('p')!.textContent = form; document.title = form; document.querySelector('button')!.setAttribute('aria-label', form); history.replaceState(null, '', '#' + form) }, form)
+      const response = await read(); assert.equal(response.body.ok, true)
+      const result = response.body.result
+      assert.match(result.text, /••••/); assert.match(result.ariaSnapshot, /••••/)
+      for (const field of ['text', 'ariaSnapshot', 'title', 'url']) assert.doesNotMatch(result[field], /CANARY|中文|口令/)
+      assert.equal(result.title, '••••'); assert.match(result.url.slice(f.origin.length), /^\/#(?:%20)*••••(?:%20)*$/)
+      assert.ok(result.refs.some((ref: { name: string }) => ref.name === '••••'))
+      assert.equal(await page.locator('input').inputValue(), password)
+    }
+  })
+  for (const password of ['-', 'r', 'e', '1']) await t.test(`short password ${password} keeps click IDs`, async () => {
+    await page.setContent('<input type="password"><button onclick="this.textContent=\'Clicked\'">X</button>')
+    await page.locator('input').fill(password)
+    const response = await read(); assert.equal(response.body.ok, true)
+    const { tabId, snapshotId, refs, ariaSnapshot } = response.body.result
+    assert.match(tabId, /^[0-9a-f-]{36}$/); assert.match(snapshotId, /^[0-9a-f-]{36}$/)
+    const target = refs.find((ref: { role: string }) => ref.role === 'button'); assert.match(target.id, /^r\d+$/)
+    assert.doesNotMatch(ariaSnapshot, /\[ref=/)
+    const click = await http(f.socket, caller, '/command', { id: crypto.randomUUID(), op: 'click', args: { snapshotId, ref: target.id } })
+    assert.equal(click.body.ok, true); assert.equal(await page.locator('button').innerText(), 'Clicked')
+  })
+})
+
 test('10k-item read uses two batch password collections and completes within three seconds', async t => {
   const f = await fixture(); t.after(() => f.close())
   const caller = session()
