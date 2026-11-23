@@ -1,7 +1,7 @@
 {
   "id": "browser",
-  "version": "1.0.0",
-  "url": "https://github.com/turmind/halo-hub/releases/download/browser-v1.0.0/browser-1.0.0.zip",
-  "sha256": "980e9349ee39de5a9aa995ff1d4f57d84d86964cf1f9ca1089746d94e636217c",
+  "version": "1.0.1",
+  "url": "https://github.com/turmind/halo-hub/releases/download/browser-v1.0.1/browser-1.0.1.zip",
+  "sha256": "20a87e70c6c7578b65a83be018a69a80176f93d0a39d901dd40de38f68e1ba3a",
   "minHalo": "2.4.0"
 }
