@@ -17,6 +17,7 @@ export const BROWSER_LIMITS = {
   screenshotBytes: 10 * 1024 * 1024,
   viewerBufferedBytes: 512 * 1024,
   commandTimeoutMs: 30000,
+  contextCloseTimeoutMs: 3000,
   idleLeaseMs: 5 * 60 * 1000,
   handoffTimeoutMs: 30 * 60 * 1000,
 } as const

@@ -84,7 +84,7 @@ export class BrowserBackend {
       await workspace.close()
       if (this.workspaces.get(workspace.projectId) === workspace) this.workspaces.delete(workspace.projectId)
       this.busy()
-    })().finally(() => this.removals.delete(workspace))
+    })().catch(() => { /* Keep the stopping workspace until its context has actually exited. */ }).finally(() => this.removals.delete(workspace))
     this.removals.set(workspace, task)
     return task
   }
@@ -169,7 +169,12 @@ export class BrowserBackend {
   private operationKey(caller: ExtensionSessionCaller, id: string) { return JSON.stringify([caller.projectId, caller.sessionId, id]) }
   async command(caller: ExtensionSessionCaller, request: BrowserCommandRequest): Promise<BrowserCommandResponse> {
     const previous = this.workspaces.get(caller.projectId)
-    if (previous) await this.removals.get(previous)
+    if (previous) {
+      const removal = this.removals.get(previous)
+      if (removal) await removal
+      else if (previous.stopping) await this.remove(previous)
+      if (this.workspaces.get(caller.projectId) === previous && previous.stopping) throw new BrowserFault('unavailable')
+    }
     const workspace = this.workspace(caller)
     const hash = createHash('sha256').update(JSON.stringify(request)).digest('hex')
     const key = this.operationKey(caller, request.id)

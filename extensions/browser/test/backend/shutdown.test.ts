@@ -109,6 +109,28 @@ test('three Windows workspaces meet close budget while detached taskkill childre
   console.log(`[BrowserTest] three Windows closes ${elapsed.toFixed(0)}ms; taskkill still running independently`)
 })
 
+test('Windows live close waits for delayed context exit, not taskkill dispatch', async t => {
+  const f = windowsCleanup(t)
+  const context = await trackedContext(700021)
+  const exited = new Promise<void>(resolve => { context.once('close', () => resolve()) })
+  const finish = context.close.bind(context)
+  const close = t.mock.method(context, 'close', () => exited)
+  const hooks = new Hooks(() => {}); t.after(() => hooks.close())
+  const workspace = new WorkspaceBrowser('/manufactured/windows-exit', '/unused-no-io', async () => context, hooks, () => {}, () => {})
+  Object.assign(workspace, { context })
+  ;(workspace as unknown as { forceClose(): void }).forceClose()
+  assert.equal(f.calls.length, 1); assert.equal(workspace.stopping, true)
+  let settled = false
+  const start = performance.now(); const closing = workspace.close().then(() => { settled = true })
+  await new Promise(resolve => setTimeout(resolve, 100))
+  assert.equal(settled, false)
+  await assert.rejects(workspace.ensureContext(), { code: 'unavailable' })
+  await new Promise(resolve => setTimeout(resolve, 400)); await finish(); await closing
+  assert.ok(performance.now() - start >= 500)
+  assert.equal(close.mock.callCount(), 1); assert.equal(f.calls.length, 1)
+  assert.equal(f.children[0].exitCode, null)
+})
+
 test('Windows context, global and exit cleanup spawn once per owned PID and ignore taskkill errors', async t => {
   const f = windowsCleanup(t)
   const first = await trackedContext(700011); const duplicate = await trackedContext(700011)

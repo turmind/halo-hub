@@ -40,7 +40,7 @@ test('read redacts collected password values across frames and every output stri
     assert.match(raw, /link[^\n]+:\n/); assert.equal(raw.match(/button "manufactured-pass-long"/g)?.length, 2)
     const response = await read(); assert.equal(response.body.ok, true)
     noPassword(response.body, [...passwords, 'shadow-password'])
-    assert.equal(response.body.result.title, '••••'); assert.ok(response.body.result.url.endsWith('#••••'))
+    assert.equal(response.body.result.title, '••••'); assert.equal(decodeURIComponent(new URL(response.body.result.url).hash.slice(1)), '••••')
     assert.match(response.body.result.ariaSnapshot, /ordinary-value/)
     assert.ok(response.body.result.refs.some((ref: { name: string }) => ref.name === '••••'))
     assert.equal(await page.locator('#password').inputValue(), passwords[0])
@@ -101,7 +101,6 @@ test('stable password transformations are masked only in content, preserving act
     const normalized = password.replace(/[\u200b\u00ad]/g, '').trim().replace(/\s+/g, ' ')
     const visible = password.replace(/[\u200b-\u200d\ufeff\u2060]/g, '')
     const forms = [...new Set([password, normalized, visible, visible.replace(/[\u200b\u00ad]/g, '').trim().replace(/\s+/g, ' ')])]
-      .flatMap(value => [value, encodeURIComponent(value), encodeURI(value), encodeURIComponent(value).replace(/%[0-9A-F]{2}/g, hex => hex.toLowerCase())])
     await page.setContent('<input type="password"><p></p><button>X</button>')
     await page.locator('input').fill(password)
     // Every known transformation is echoed in all four content surfaces; password sampling stays stable.
@@ -111,7 +110,7 @@ test('stable password transformations are masked only in content, preserving act
       const result = response.body.result
       assert.match(result.text, /••••/); assert.match(result.ariaSnapshot, /••••/)
       for (const field of ['text', 'ariaSnapshot', 'title', 'url']) assert.doesNotMatch(result[field], /CANARY|中文|口令/)
-      assert.equal(result.title, '••••'); assert.match(result.url.slice(f.origin.length), /^\/#(?:%20)*••••(?:%20)*$/)
+      assert.equal(result.title, '••••'); assert.equal(decodeURIComponent(new URL(result.url).hash.slice(1)), '••••')
       assert.ok(result.refs.some((ref: { name: string }) => ref.name === '••••'))
       assert.equal(await page.locator('input').inputValue(), password)
     }
@@ -126,6 +125,57 @@ test('stable password transformations are masked only in content, preserving act
     assert.doesNotMatch(ariaSnapshot, /\[ref=/)
     const click = await http(f.socket, caller, '/command', { id: crypto.randomUUID(), op: 'click', args: { snapshotId, ref: target.id } })
     assert.equal(click.body.ok, true); assert.equal(await page.locator('button').innerText(), 'Clicked')
+  })
+})
+
+test('URL components and title match in decoded and normalized spaces', async t => {
+  const f = await fixture(); t.after(() => f.close())
+  const caller = session()
+  await http(f.socket, caller, '/command', { id: 'open', op: 'open', args: { url: f.origin } })
+  const page = f.contexts[0].pages()[0]
+  const read = () => http(f.socket, caller, '/command', { id: crypto.randomUUID(), op: 'read', args: {} })
+  for (const password of ["'", '["', '|"', 'SPACE CANARY', 'quote"CANARY', '中文口令']) await t.test(`URL serialization ${JSON.stringify(password)}`, async () => {
+    await page.setContent('<input type="password">'); await page.locator('input').fill(password)
+    await page.evaluate(password => {
+      const url = new URL(location.href)
+      url.pathname = '/keep/' + password + '/end'; url.search = '?' + password + '=' + password + '&keep=ok'; url.hash = password
+      history.replaceState(null, '', url)
+    }, password)
+    const response = await read(); assert.equal(response.body.ok, true)
+    const url = new URL(response.body.result.url)
+    assert.equal(decodeURIComponent(url.pathname), '/keep/••••/end')
+    assert.deepEqual([...url.searchParams], [['••••', '••••'], ['keep', 'ok']])
+    assert.equal(decodeURIComponent(url.hash.slice(1)), '••••')
+    // URLSearchParams serializes form spaces as '+', including in keys.
+    await page.evaluate(password => { const url = new URL(location.href); url.search = new URLSearchParams([[password, password]]).toString(); history.replaceState(null, '', url) }, password)
+    assert.deepEqual([...new URL((await read()).body.result.url).searchParams], [['••••', '••••']])
+    const lower = page.url().replace(/%[0-9A-F]{2}/g, hex => hex.toLowerCase())
+    await page.evaluate(url => history.replaceState(null, '', url), lower)
+    assert.deepEqual([...new URL((await read()).body.result.url).searchParams], [['••••', '••••']])
+  })
+  await t.test('GET form plus encoding is decoded before matching', async () => {
+    await page.goto(f.origin)
+    await page.setContent('<form method="get"><input type="password" name="credential" value="FORM CANARY"><button>Submit</button></form>')
+    await Promise.all([page.waitForURL(url => url.searchParams.has('credential')), page.getByRole('button', { name: 'Submit' }).click()])
+    assert.match(page.url(), /FORM\+CANARY/)
+    await page.setContent('<input type="password" value="FORM CANARY">')
+    const response = await read(); assert.equal(response.body.ok, true)
+    assert.equal(new URL(response.body.result.url).searchParams.get('credential'), '••••')
+  })
+  for (const password of ['C0\u0001CANARY', 'DEL\u007fCANARY', 'MULTI\u0001\u0002\u007f\u0085CANARY']) await t.test(`title controls ${JSON.stringify(password)}`, async () => {
+    await page.setContent('<input type="password"><p></p>')
+    await page.locator('input').fill(password)
+    await page.evaluate(password => { document.title = 'prefix ' + password + ' suffix'; document.querySelector('p')!.textContent = password }, password)
+    const response = await read(); assert.equal(response.body.ok, true)
+    assert.equal(response.body.result.title, 'prefix •••• suffix')
+    assert.doesNotMatch(response.body.result.text, /CANARY/)
+    assert.equal(await page.locator('input').inputValue(), password)
+  })
+  await t.test('malformed component decoding preserves unrelated data', async () => {
+    await page.setContent('<input type="password" value="private-value">')
+    await page.evaluate(() => history.replaceState(null, '', '/%zz?keep=%zz#%zz'))
+    const response = await read(); assert.equal(response.body.ok, true)
+    assert.ok(response.body.result.url.endsWith('/%zz?keep=%zz#%zz'))
   })
 })
 

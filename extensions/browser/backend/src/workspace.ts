@@ -30,6 +30,10 @@ export class WorkspaceBrowser {
   private latestMarkers = new Map<string, string>()
   private epoch = 0
   private context?: BrowserContext
+  private stoppingContext?: BrowserContext
+  private contextExited?: Promise<void>
+  private contextClosing?: Promise<void>
+  get stopping() { return this.closeRequested || this.closing }
   private initialization?: Promise<BrowserContext>
   private pages = new Map<string, Page>()
   private titles = new Map<Page, string>()
@@ -133,6 +137,7 @@ export class WorkspaceBrowser {
   activityStarted() { this.running++; this.scheduleLease(); this.changed() }
   activityEnded() { this.scheduleLease(); this.changed() }
   async ensureContext(): Promise<BrowserContext> {
+    if (this.stopping) throw new BrowserFault('unavailable')
     checkSignal(this.life.signal)
     if (this.initialization) return this.initialization
     if (this.context) return this.context
@@ -140,6 +145,7 @@ export class WorkspaceBrowser {
     this.initialization = (async () => {
       await this.store.init()
       const context = await this.launch(this.store.profile, this.life.signal, runtime => { this.runtime = runtime; this.broadcast({ type: 'runtime', runtime }) })
+      this.contextExited = undefined; this.contextClosing = undefined; this.observeExit(context)
       try {
         checkSignal(this.life.signal)
         context.setDefaultTimeout(10000); context.setDefaultNavigationTimeout(15000)
@@ -356,14 +362,30 @@ export class WorkspaceBrowser {
     const after = await this.passwordValues(page)
     if (before.size !== after.size || [...before].some(value => !after.has(value))) throw new BrowserFault('operation-failed')
     if (this.snapshotId !== snapshotId) throw new BrowserFault('stale-ref')
-    // Match Playwright 1.61 normalizeWhiteSpace, plus zero-width removal and URL serialization.
+    // Compare title and decoded URL components in the same browser-normalized space.
+    const normalizeContent = (value: string) => value.replace(/[\x00-\x1f\x7f-\x9f]/g, ' ').replace(/[\u200b-\u200d\ufeff\u2060\u00ad]/g, '').replace(/\s+/g, ' ').trim()
     const normalize = (value: string) => value.replace(/[\u200b\u00ad]/g, '').trim().replace(/\s+/g, ' ')
     const variants = [...before].flatMap(value => {
       const visible = value.replace(/[\u200b-\u200d\ufeff\u2060]/g, '')
-      return [value, normalize(value), visible, normalize(visible)]
-    }).flatMap(value => [value, value.replace(/[\t\r\n]/g, '')]) // URL parsing drops ASCII tabs/newlines before encoding.
-      .flatMap(value => [value, value.replace(/\s*\[ref=[^\]]+\]/g, ''), encodeURIComponent(value), encodeURI(value)])
-      .flatMap(value => [value, value.replace(/%[0-9a-f]{2}/gi, hex => hex.toLowerCase()), value.replace(/%[0-9a-f]{2}/gi, hex => hex.toUpperCase())])
+      return [value, normalize(value), visible, normalize(visible), normalizeContent(value)]
+    }).flatMap(value => [value, value.replace(/[\t\r\n]/g, '')]) // URL parsing drops ASCII tabs/newlines.
+      .flatMap(value => [value, value.replace(/\s*\[ref=[^\]]+\]/g, '')])
+    const normalizedPasswords = [...new Set(variants.map(normalizeContent).filter(Boolean))].sort((a, b) => b.length - a.length)
+    result.title = normalizeContent(result.title)
+    for (const password of normalizedPasswords) result.title = result.title.split(password).join('••••')
+    const matches = (value: string) => normalizedPasswords.some(password => normalizeContent(value).includes(password))
+    const decode = (value: string) => { try { return decodeURIComponent(value) } catch { return value } }
+    try {
+      const url = new URL(result.url)
+      url.pathname = url.pathname.split('/').map(segment => matches(decode(segment)) ? '••••' : segment).join('/')
+      const params = [...url.searchParams]
+      if (params.some(([key, value]) => matches(key) || matches(value))) {
+        url.search = ''
+        for (const [key, value] of params) url.searchParams.append(matches(key) ? '••••' : key, matches(value) ? '••••' : value)
+      }
+      if (matches(decode(url.hash.slice(1)))) url.hash = '••••'
+      result.url = url.href
+    } catch { result.url = 'about:blank' }
     // ARIA quotes values and derived names. Include each variant's escaped spellings too.
     const passwords = [...new Set(variants.filter(Boolean).flatMap(value => {
       const quoted = JSON.stringify(value).slice(1, -1)
@@ -372,7 +394,7 @@ export class WorkspaceBrowser {
     }))].sort((a, b) => b.length - a.length)
     const redact = (value: string) => { for (const password of passwords) value = value.split(password).join('••••'); return value }
     // Strip ARIA refs first, then redact content before truncation; protocol IDs and roles stay intact.
-    for (const key of ['url', 'title', 'text', 'ariaSnapshot'] as const) result[key] = redact(result[key])
+    for (const key of ['text', 'ariaSnapshot'] as const) result[key] = redact(result[key])
     for (const ref of refs) ref.name = redact(ref.name).slice(0, 160)
     result.title = result.title.slice(0, 200); result.text = result.text.slice(0, BROWSER_LIMITS.pageTextChars)
     result.ariaSnapshot = result.ariaSnapshot.slice(0, BROWSER_LIMITS.snapshotChars)
@@ -499,7 +521,7 @@ export class WorkspaceBrowser {
   }
   private closeTask?: Promise<void>
   close(shutdownMs?: number): Promise<void> {
-    this.closeTask ??= this.closeBrowser()
+    this.closeTask ??= this.closeBrowser().catch(error => { this.closeTask = undefined; throw error })
     if (shutdownMs === undefined) return this.closeTask
     // Process stop can shorten an already-running live close, without leaving a timer after it finishes.
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -507,15 +529,27 @@ export class WorkspaceBrowser {
       timer = setTimeout(() => { this.forceClose(); resolve() }, shutdownMs)
     })]).finally(() => { clearTimeout(timer) })
   }
+  private observeExit(context: BrowserContext) {
+    this.contextExited ??= new Promise<void>(resolve => { context.once('close', () => resolve()) })
+    return this.contextExited
+  }
+  private async waitForExit(exited: Promise<void>) {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([exited, new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new BrowserFault('unavailable')), BROWSER_LIMITS.contextCloseTimeoutMs)
+      })])
+    } finally { clearTimeout(timer) }
+  }
   private forceClose() {
-    const context = this.commit?.context ?? this.context
+    const context = this.commit?.context ?? this.context ?? this.stoppingContext
     if (this.commit) {
       this.commit.invalidate()
       this.runtime = { protocol: 1, status: 'unavailable', reason: 'Browser import cleanup timed out; sign-in state is uncertain.' }
       this.broadcast({ type: 'runtime', runtime: this.runtime })
     }
     this.closing = true; this.context = undefined
-    if (context) killContext(context)
+    if (context) { this.stoppingContext = context; this.observeExit(context); killContext(context) }
   }
   private async closeBrowser() {
     this.closeRequested = true; this.epoch++; this.life.abort()
@@ -531,16 +565,28 @@ export class WorkspaceBrowser {
     }
     await this.initialization?.catch(() => {})
     // A wedged command must not prevent closing the context/process. Never save tentative cookies after forced teardown.
-    const context = this.context ?? guard?.context
+    const context = this.context ?? this.stoppingContext ?? guard?.context
     if (context) {
-      const deadline = setTimeout(() => killContext(context), 3000)
+      this.observeExit(context)
+      const deadline = setTimeout(() => this.forceClose(), BROWSER_LIMITS.contextCloseTimeoutMs)
       try {
-        // The guarded import already persisted commit/undo, or reported uncertainty. Do not checkpoint tentative state again.
+        // The guarded import already persisted commit/undo, or reported uncertainty. Do not checkpoint tentative cookies.
         if (!guard && !this.closing) await this.saveCheckpoint(context).catch(() => {})
+        const forced = !!this.stoppingContext
         this.closing = true
-        await context.close().catch(() => {})
+        // Keep the first close promise: Playwright's subsequent close() can return while still closing.
+        this.contextClosing ??= context.close().catch(() => {}).then(() => this.contextExited!)
+        // Graceful close also waits Playwright's process cleanup, not just its earlier context event.
+        await this.waitForExit(forced ? Promise.race([this.contextClosing, this.contextExited!]) : this.contextClosing)
+      } catch (error) {
+        if (this.runtime.status !== 'unavailable') {
+          this.runtime = { protocol: 1, status: 'unavailable', reason: 'Browser is still stopping. Open Browser again after it exits.' }
+          this.broadcast({ type: 'runtime', runtime: this.runtime })
+        }
+        throw error
       } finally { clearTimeout(deadline) }
     }
+    this.stoppingContext = undefined
     this.closing = true
     this.delivery.close(); for (const viewer of this.viewers.keys()) viewer.close(); this.viewers.clear()
     this.context = undefined; this.owner = undefined; this.driver = 'idle'; this.clearRefs(); this.changed()
