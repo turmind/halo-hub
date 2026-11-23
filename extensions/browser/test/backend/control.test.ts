@@ -60,6 +60,24 @@ test('ownerless viewer lets first claimant read then act in the same turn; agent
   } finally { await w.close(); hooks.close(); await f.close() }
 })
 
+test('read keeps internal snapshot identities out of labels and exposes only actionable refs', async () => {
+  const f = await fixture()
+  try {
+    const caller = session()
+    await http(f.socket, caller, '/command', { id: 'open', op: 'open', args: { url: f.origin } })
+    const page = f.contexts[0].pages()[0]
+    await page.setContent('<h1>Heading</h1><div role="group" aria-label="Group"><button onclick="this.textContent=\'Clicked\'">X</button><label>Ordinary<input value="ordinary [ref=e999]"></label></div>')
+    const response = await http(f.socket, caller, '/command', { id: 'read', op: 'read', args: {} })
+    assert.equal(response.body.ok, true)
+    const { ariaSnapshot, snapshotId, refs } = response.body.result
+    assert.deepEqual(ariaSnapshot.match(/\[ref=e\d+\]/g), ['[ref=e999]']) // Keep literal field values, not generated identities.
+    const target = refs.find((ref: any) => ref.name === 'X')
+    assert.match(target.id, /^r\d+$/)
+    assert.equal((await http(f.socket, caller, '/command', { id: 'click', op: 'click', args: { snapshotId, ref: target.id } })).body.ok, true)
+    assert.equal(await page.locator('button').innerText(), 'Clicked')
+  } finally { await f.close() }
+})
+
 test('read redacts password values including quoted/shadow inputs, without changing forms or ordinary values', async () => {
   const f = await fixture()
   try {

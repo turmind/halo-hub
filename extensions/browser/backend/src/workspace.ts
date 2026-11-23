@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { writeFile, rm, readFile, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { parseDocument, visit, isScalar, Scalar } from 'yaml'
+import { parseDocument, visit, isPair, isScalar, Scalar } from 'yaml'
 import type { BrowserContext, CDPSession, ElementHandle, Page } from 'playwright'
 import type { ExtensionCaller, ExtensionSessionCaller } from '../../contracts/halo-core/extension-notices.js'
 import { BROWSER_LIMITS, BROWSER_VIEWPORT, BROWSER_JPEG_QUALITY, isReadCommand, type BrowserCommandRequest, type BrowserCommandResults, type BrowserCommandName, type BrowserState, type BrowserRuntimeInfo, type BrowserServerFrame, type BrowserPageRead, type BrowserViewerFrame } from './protocol.js'
@@ -331,12 +331,14 @@ export class WorkspaceBrowser {
     const document = parseDocument(await page.locator('body').ariaSnapshot({ mode: 'ai' }))
     if (document.errors.length) throw new BrowserFault('operation-failed')
     const values: Array<{ id: string; mask: () => void }> = []
-    visit(document, { Pair: (_key, pair) => {
-      if (!isScalar(pair.key) || typeof pair.key.value !== 'string' || !isScalar(pair.value)) return
-      const match = / \[ref=(e\d+)\](?=(?: \[[^\]]*\])*$)/.exec(pair.key.value)
+    visit(document, { Scalar: (key, node, path) => {
+      if (key !== 'key' && typeof key !== 'number' || typeof node.value !== 'string') return
+      const match = / \[ref=(e\d+)\](?=(?: \[[^\]]*\])*$)/.exec(node.value)
       if (!match) return
-      values.push({ id: match[1], mask: () => { pair.value = new Scalar('••••') } })
-      pair.key.value = pair.key.value.replace(match[0], '')
+      const pair = path.at(-1)
+      if (isPair(pair) && isScalar(pair.value)) values.push({ id: match[1], mask: () => { pair.value = new Scalar('••••') } })
+      // Playwright identities are private to masking; only our snapshotId:rN refs are actionable.
+      node.value = node.value.replace(match[0], '')
     } })
     for (const value of values) {
       if (await page.locator(`aria-ref=${value.id}`).evaluate(node => node instanceof HTMLInputElement && node.type === 'password')) value.mask()
