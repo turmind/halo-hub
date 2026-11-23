@@ -1,36 +1,34 @@
 ---
 name: browser
-description: Browse a shared workspace browser, watch it in Canvas, and hand control to the user for sign-in.
+description: Browse together in Canvas; read while the user operates, continue actions after their next chat message.
 ---
 
 # Browser
 
-Runs on the **Halo server machine**, not the remote Admin computer. One persistent profile per workspace is shared with later enabled full-access sessions. One session drives at a time: `busy` means wait or ask the user, never take over another session.
-
-Launch the sibling `browser.mjs` with the bundled runtime (quote both paths):
+A shared workspace browser on the Halo server; users can interact and navigate directly in Canvas.
 
 - POSIX: `"$HALO_EXT_NODE" "<this skill directory>/browser.mjs" <command>`
 - Windows cmd: `"%HALO_EXT_NODE%" "<this skill directory>\browser.mjs" <command>`
 
-Requires the enabled extension skill and confirmed backend in a full-access Halo server session. Do **not** print `HALO_EXT_BACKENDS`, read profile files, or put credentials in command arguments. No standalone CLI/TUI/AgentCore access.
-
 ## Commands
 
-- `open <http(s)-url>` — navigate the selected tab, open/reveal notice for Canvas.
-- `read` — bounded visible text + ARIA snapshot + `snapshotId` and refs.
-- `click <snapshotId:ref>` / `type <snapshotId:ref> <text>` — live snapshot only. Re-read when stale; no CSS/JS/CDP fallback. Never type account secrets on the user's behalf.
-- `press <key>` / `scroll <dx> <dy>` — normal page actions.
-- `screenshot <workspace-scratch-file.png>` — explicitly requested PNG only, saved without overwriting an existing file. Use a path in the workspace's scratch area, then the image tool to inspect it.
-- `tabs` / `select-tab <id>` — tabs share the workspace profile.
-- `handoff [reason]` — returns `waiting-for-user`. Tell the user to take control in Browser Canvas, then **end this turn**. No waiting shell or polling loop.
-- `signin-sources <site>` — metadata only from the server machine; no cookie names/values. Available is not proof of authentication.
-- `signin-import <site> [--from <source-id>]` — user-consented copy from one source, never merged accounts. `imported` is a checkpointed copy, not proof of sign-in. `cancelled` means no mutation or confirmed rollback plus undo checkpoint. If unavailable with uncertain state, ask the user to inspect Canvas before continuing; do not treat it as a clean cancellation. Other unavailable results can fall back to sign-in in Canvas. After `cancelled` or `unavailable`, retry only if the user explicitly requests it; first resume after their new chat reply. Never automatically retry or repeat an imported result; equivalent site URL/case/path spellings share the same import operation for the same source. An implicit successful import also records its returned source ID: explicitly naming that ID after resume returns the existing operation, not another copy.
-- `resume` — internal `control.resume`, **only after you interpret a new human reply in this exact Halo chat** as permission to continue. The backend requires a newer human-input marker and no pending import approval. It cannot infer what “done” means. Do not auto-resume on a notice result.
-- `status` — redacted runtime state; allowed while user controls the browser.
-- `operation <id>` — one-shot retrieval after a pushed completion and, for a pending import, a new human reply in this chat. `running` and pending-import `waiting-for-user` output include `id`; keep it, end the turn, then run `operation <id>` once when allowed. The completion notice repeats the ID. Never poll or repeat the original mutation under a new ID; retrieval is not permission to resume.
+- `open <http(s)-url>` — navigate the selected tab and offer Canvas.
+- `read` — page text, ARIA snapshot and `snapshotId:ref` targets.
+- `click <snapshotId:ref>` / `type <snapshotId:ref> <text>` — interact using current targets; re-read stale refs.
+- `press <key>` / `scroll <dx> <dy>` — keyboard or scrolling.
+- `screenshot <scratch-file.png>` — save a requested screenshot without overwriting.
+- `tabs` / `select-tab <id>` — list or select tabs.
+- `close-tab <id>` — close a tab; the last becomes blank.
+- `handoff [reason]` — ask the user to act in Canvas.
+- `signin-sources <site>` — list existing server-side sign-in sources.
+- `signin-import <site> [--from <source-id>]` — request consent to copy one source; copying does not prove login.
+- `status` — runtime status.
+- `operation <id>` — retrieve a pushed completion once; retain the ID from pending output, never poll or replay the mutation.
 
-While user owns control, **all agent reads, screenshots and mutations are denied**. A same-turn or different-session `resume` cannot reclaim control. Clicking/typing on the Canvas page or using its address/navigation/tab controls automatically takes over and pauses the agent; hovering/scrolling while watching does not. Only one viewer can drive. The compact toolbar has back/forward/reload, an http(s)-only address (Enter; missing scheme defaults to https, no search), new tab, a status/FPS chip with guidance on hover, and an information popover. Tabs appear only with two or more pages and can be selected/closed. Tell the user to return to this exact chat and reply when finished; there is no takeover, Back to chat or Done button. Completion must be a real user message. Open/handoff invitations disappear once a viewer connects; operation-completed notices remain so the result ID is not lost. Import consent authorizes copying, not resumption. After resuming, read the page; never claim login success from a URL heuristic.
+## Rules
 
-2 FPS while watching/agent driving, 10 FPS while user controls input, then 2 FPS on resume. Multiple viewers may watch; only one owns input. No visible viewer suspends capture. Hidden tabs do not hold the browser forever; an idle lease closes after five minutes, or thirty minutes for an unattended handoff with an agent owner. The user may take over from Settings before any agent request: your first request then claims ownership but returns `waiting-for-user`, fencing that current turn. Wait for a newer human reply before `resume`; other sessions get `busy`. Until claimed, closing the last viewer releases control, and five minutes without input expires it even while visible. Running commands and initialization do not expire through this idle lease.
-
-Native file dialogs, upload/download management, clipboard chrome, passkeys and audio/video conferencing are not supported. Sign-ins persist in the dedicated profile; session-cookie checkpoints debounce meaningful input and background cookie responses, not movement/releases. They are crash-bounded, not zero-loss. If the browser exits unexpectedly or a commit times out, it releases live state; a later new-ID `open` starts a fresh context from the last saved state. Live close permits up to 30 seconds for import cleanup, but backend process stop permits only about 3 seconds before forced teardown. Hard kill cannot guarantee undo or delivery of a completion notice; interrupted imports may be uncertain. Do not claim the interrupted operation succeeded or replay it blindly. No real user profile is launched or modified.
+1. While the user operates, `read`, `tabs`, `screenshot` and `status` remain available; actions wait. Any new user message in this chat is permission: continue directly, without asking again. The backend automatically returns control on your next action.
+2. On `waiting-for-user`, say “Reply in this chat when finished,” then end this turn; never poll. Import consent alone is not permission to continue.
+3. Never enter account credentials for users; use `handoff` for login. Never expose backend keys or profile files.
+4. On `busy`, tell the user another session is using the browser.
+5. Do not repeat successful imports; equivalent requests deduplicate. Retry failed/cancelled imports only when requested; uncertain outcomes require user inspection, not a claim of success.
