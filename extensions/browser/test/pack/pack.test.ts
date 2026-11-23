@@ -45,16 +45,16 @@ test('browser uses one platform-independent ZIP, flat update metadata and no bui
   f.run()
   await assert.rejects(readFile(join(f.temp, 'calls')))
   assert.equal(await readFile(join(f.ext, 'backend/src/keep.ts'), 'utf8'), 'fixture')
-  const zip = join(f.temp, 'dist/browser-1.0.0.zip')
+  const zip = join(f.temp, 'dist/browser-1.0.1.zip')
   const names = execFileSync('unzip', ['-Z1', zip], { encoding: 'utf8' }).trim().split('\n')
   assert.ok(names.includes('backend/index.cjs')); assert.ok(names.includes('backend/node_modules/example/index.js'))
   assert.ok(names.includes('skills/browser/SKILL.md')); assert.ok(names.includes('dist/viewer.js'))
   assert.ok(!names.some(name => /^(src|test|contracts|\.staging|backend\/(src|native))\//.test(name) || name === 'build.mjs'))
-  const update = JSON.parse(await readFile(join(f.temp, 'dist/browser-1.0.0.update.json'), 'utf8'))
-  assert.deepEqual(update, { id: 'browser', version: '1.0.0',
-    url: 'https://github.com/turmind/halo-hub/releases/download/browser-v1.0.0/browser-1.0.0.zip',
+  const update = JSON.parse(await readFile(join(f.temp, 'dist/browser-1.0.1.update.json'), 'utf8'))
+  assert.deepEqual(update, { id: 'browser', version: '1.0.1',
+    url: 'https://github.com/turmind/halo-hub/releases/download/browser-v1.0.1/browser-1.0.1.zip',
     sha256: createHash('sha256').update(await readFile(zip)).digest('hex'), minHalo: '2.4.0' })
-  assert.deepEqual((await readdir(join(f.temp, 'dist'))).sort(), ['browser-1.0.0.update.json', 'browser-1.0.0.zip'])
+  assert.deepEqual((await readdir(join(f.temp, 'dist'))).sort(), ['browser-1.0.1.update.json', 'browser-1.0.1.zip'])
   for (const args of [['--platforms'], ['--platform', 'linux-x64']]) {
     const result = spawnSync(process.execPath, [pack, f.ext, ...args], { cwd: f.temp, encoding: 'utf8' })
     assert.notEqual(result.status, 0); assert.match(result.stderr, /No platform builder registered for browser/)
@@ -74,10 +74,10 @@ for (const id of ['voice-input', 'htrans']) test(`${id} regression: five unchang
   f.run(['--platforms'])
   const platforms = ['linux-x64', 'linux-arm64', 'darwin-arm64', 'darwin-x64', 'win-x64']
   assert.equal(await readFile(join(f.temp, 'calls'), 'utf8'), platforms.map(p => `${f.ext}|${p}\n`).join(''))
-  const update = JSON.parse(await readFile(join(f.temp, `dist/${id}-1.0.0.update.json`), 'utf8'))
+  const update = JSON.parse(await readFile(join(f.temp, `dist/${id}-1.0.1.update.json`), 'utf8'))
   assert.equal(update.minHalo, '2.3.0'); assert.deepEqual(Object.keys(update.packages), platforms)
   for (const platform of platforms) {
-    const zip = join(f.temp, `dist/${id}-1.0.0-${platform}.zip`)
+    const zip = join(f.temp, `dist/${id}-1.0.1-${platform}.zip`)
     assert.equal(execFileSync('unzip', ['-p', zip, 'backend/index.cjs'], { encoding: 'utf8' }), platform)
     assert.equal(execFileSync('unzip', ['-p', zip, 'backend/node_modules/example/test/keep.js'], { encoding: 'utf8' }), 'STT contents stay unchanged')
     assert.equal(update.packages[platform].sha256, createHash('sha256').update(await readFile(zip)).digest('hex'))
@@ -115,7 +115,7 @@ test('single ZIP strips dependency dev files and boots the backend, sign-in work
   await assert.rejects(readFile(join(f.ext, 'backend/native/stale-fixture')))
   f.run()
   const extracted = join(f.temp, 'extracted'); await mkdir(extracted)
-  execFileSync('unzip', ['-q', join(f.temp, 'dist/browser-1.0.0.zip'), '-d', extracted])
+  execFileSync('unzip', ['-q', join(f.temp, 'dist/browser-1.0.1.zip'), '-d', extracted])
   const files = (await readdir(join(extracted, 'backend/node_modules'), { recursive: true })).map(file => file.replaceAll('\\', '/'))
   const development = files.filter(file => /(^|\/)(tests?|__tests__|\.github|examples?|docs?|fixtures?|benchmarks?|coverage)(\/|$)|\.(test|spec)\.|\.(map|[cm]?ts|tsx)$/i.test(file))
   // Playwright's lib/mcp/test is CLI runtime, not its test suite.

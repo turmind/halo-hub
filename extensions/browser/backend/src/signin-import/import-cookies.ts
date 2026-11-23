@@ -1,4 +1,5 @@
 import type { BrowserContext, CDPSession, Route } from 'playwright'
+import type { SigninCommit } from '../signin-service.js'
 import { check, SigninFault, type ImportCookie, type SigninHost } from './types.js'
 
 const identity = (cookie: ImportCookie) => JSON.stringify([cookie.name, cookie.domain, cookie.path, cookie.partitionKey?.topLevelSite ?? null, cookie.partitionKey?.hasCrossSiteAncestor ?? null])
@@ -15,10 +16,17 @@ class CookieImportTransaction {
   get needsRollback() { return this.dirty }
   get needsCheckpoint() { return this.mutated }
 
-  async apply(context: BrowserContext, signal: AbortSignal): Promise<number> {
+  async apply(context: BrowserContext, signal: AbortSignal, tabId: SigninCommit['tabId']): Promise<number> {
     check(signal)
     // Context routes do not intercept worker traffic; page-only pause is not sufficient there.
-    if (context.serviceWorkers().length || context.pages().some(page => page.workers().length)) throw new SigninFault('activeWorkers')
+    const services = context.serviceWorkers(); const pages = context.pages()
+    if (services.length || pages.some(page => page.workers().length)) {
+      const origin = (url: string) => { try { return new URL(url).origin } catch { return 'null' } }
+      const serviceOrigins = new Set(services.map(worker => origin(worker.url())))
+      const workers = pages.filter(page => page.workers().length || serviceOrigins.has(origin(page.url()))).map(page => `${tabId(page)} ${origin(page.url())}`)
+      for (const site of serviceOrigins) if (!pages.some(page => origin(page.url()) === site)) workers.push(`service-worker ${site}`)
+      throw new SigninFault('activeWorkers', { workers })
+    }
     this.context = context; context.on('close', this.onClose)
     const sessions: CDPSession[] = []
     const paused: CDPSession[] = []
@@ -118,7 +126,7 @@ export async function commitCookies(host: SigninHost, cookies: ImportCookie[], s
       await target.withContext(async context => {
         check(signal)
         await beforeApply()
-        return transaction.apply(context, signal)
+        return transaction.apply(context, signal, target.tabId)
       })
       check(signal) // Includes abort/rejection at the outer context boundary, before persistence.
       await target.checkpoint()

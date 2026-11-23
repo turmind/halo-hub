@@ -326,6 +326,7 @@ export class WorkspaceBrowser {
       const guard = { context, done: new Promise<void>(resolve => { finish = resolve }), invalidate: () => { active = false; interrupt(new BrowserFault('unavailable')) } }
       const validate = () => { if (!active || this.commit !== guard || this.context !== context || this.closing) throw new BrowserFault('unavailable') }
       const target: SigninCommit = {
+        tabId: page => { validate(); return [...this.pages].find(([, candidate]) => candidate === page)![0] },
         withContext: async task => {
           validate(); checkSignal(signal); checkSignal(this.life.signal)
           const result = await task(context)

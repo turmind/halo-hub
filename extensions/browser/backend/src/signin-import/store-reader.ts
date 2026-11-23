@@ -1,8 +1,8 @@
 import { Worker } from 'node:worker_threads'
 import { createHash } from 'node:crypto'
-import { stat } from 'node:fs/promises'
+import { open, stat } from 'node:fs/promises'
 import type { SiteScope } from './site-scope.js'
-import { SigninFault, type Source } from './types.js'
+import { readFailure, SigninFault, type Source } from './types.js'
 
 export interface StoreRow {
   host: string; path: string; expiry: bigint; persistent: bigint; secure: bigint; httpOnly: bigint; sameSite: bigint
@@ -11,7 +11,7 @@ export interface StoreRow {
 }
 export interface StoreRead { version: number; rows: StoreRow[]; fingerprint: string }
 // Self-contained JS worker survives the extension's CJS bundle; SQLite never blocks the backend loop.
-// No temp snapshots: read-only transaction includes WAL or fails with a close-and-retry message.
+// No temp snapshots: read-only transaction includes WAL; only SQLite BUSY/LOCKED advises closing.
 const reader = String.raw`
 const { parentPort, workerData: d } = require('node:worker_threads');
 const { DatabaseSync } = require('node:sqlite');
@@ -50,21 +50,23 @@ try {
     }
   }
   db.exec('COMMIT'); parentPort.postMessage({ version, rows });
-} catch (e) { parentPort.postMessage({ error: e === 'format' ? 'format' : 'locked' }); }
+} catch (e) { parentPort.postMessage({ error: e === 'format' || [11, 26].includes(e?.errcode & 0xff) ? 'format' : { errcode: e?.errcode } }); }
 finally { db?.close(); }
 `
-export async function fileFingerprint(source: Source) {
+export async function fileFingerprint(source: Source, platform: NodeJS.Platform = process.platform) {
   const hashes: string[] = []
   // SQLite may create an empty WAL on read-only open; zero bytes and absent both mean no WAL
   // content. Hashing its mere creation would reject an unchanged source on every first read.
   for (const file of [source.file, source.file + '-wal']) {
     try { const s = await stat(file, { bigint: true }); hashes.push(file.endsWith('-wal') && s.size === 0n ? 'absent' : [s.dev, s.ino, s.size, s.mtimeNs, s.ctimeNs].join(':')) }
-    catch (e) { if (file === source.file || (e as NodeJS.ErrnoException).code !== 'ENOENT') throw new SigninFault('locked'); hashes.push('absent') }
+    catch (e) { if (file === source.file || (e as NodeJS.ErrnoException).code !== 'ENOENT') throw readFailure(e, platform, source.browser); hashes.push('absent') }
   }
   return createHash('sha256').update(hashes.join('|')).digest('hex')
 }
-export async function readStore(source: Source, scope: SiteScope, values: boolean, signal: AbortSignal): Promise<StoreRead> {
-  const fingerprint = await fileFingerprint(source)
+export async function readStore(source: Source, scope: SiteScope, values: boolean, signal: AbortSignal, platform: NodeJS.Platform = process.platform): Promise<StoreRead> {
+  // TCC can allow stat yet deny open; probe in the host before SQLite loses the filesystem errno.
+  try { const file = await open(source.file, 'r'); await file.close() } catch (error) { throw readFailure(error, platform, source.browser) }
+  const fingerprint = await fileFingerprint(source, platform)
   if (signal.aborted) throw new SigninFault('key')
   const result = await new Promise<Omit<StoreRead, 'fingerprint'>>((resolve, reject) => {
     const worker = new Worker(reader, { eval: true, workerData: { file: source.file, family: source.family, scope, values, now: Date.now() / 1000 }, stderr: true })
@@ -78,15 +80,17 @@ export async function readStore(source: Source, scope: SiteScope, values: boolea
       void worker.terminate().finally(() => { if (error) reject(error); else resolve(data!) })
     }
     const abort = () => finish(new SigninFault('key'))
-    const timer = setTimeout(() => finish(new SigninFault('locked')), 15000)
+    const timer = setTimeout(() => finish(new SigninFault('unreadable')), 15000)
     signal.addEventListener('abort', abort, { once: true })
-    worker.once('message', data => data.error ? finish(new SigninFault(data.error)) : finish(undefined, data))
-    worker.once('error', () => finish(new SigninFault('locked')))
-    worker.once('exit', code => { if (code) finish(new SigninFault('locked')) })
-  })
-  if (signal.aborted || fingerprint !== await fileFingerprint(source)) {
+    worker.once('message', data => data.error ? finish(data.error === 'format' ? new SigninFault('format') : readFailure(data.error, platform, source.browser)) : finish(undefined, data))
+    worker.once('error', () => finish(new SigninFault('unreadable')))
+    worker.once('exit', () => finish(new SigninFault('unreadable')))
+  }).catch(error => { throw error instanceof SigninFault ? error : new SigninFault('unreadable') })
+  try {
+    if (signal.aborted || fingerprint !== await fileFingerprint(source, platform)) throw new SigninFault('changed')
+  } catch (error) {
     for (const row of result.rows) { row.encrypted?.fill(0); row.value = undefined }
-    throw new SigninFault('changed')
+    throw error
   }
   return { ...result, fingerprint }
 }

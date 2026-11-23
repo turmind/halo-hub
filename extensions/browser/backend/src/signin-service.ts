@@ -1,4 +1,4 @@
-import type { BrowserContext } from 'playwright'
+import type { BrowserContext, Page } from 'playwright'
 import type { ExtensionCaller, ExtensionNotice, ExtensionNoticeDecision } from '../../contracts/halo-core/extension-notices.js'
 import type { SigninImportResult, SigninSource } from './protocol.js'
 
@@ -11,6 +11,7 @@ export interface SigninService {
 
 /** Valid only inside withCommit, bound to its original context; cleanup/checkpoint ignore request abort. */
 export interface SigninCommit {
+  tabId(page: Page): string
   withContext<T>(work: (context: BrowserContext) => Promise<T>): Promise<T>
   cleanup<T>(work: (context: BrowserContext) => Promise<T>): Promise<T>
   checkpoint(): Promise<void>

@@ -22,7 +22,12 @@ export const runTool: ToolRunner = (file, args, input, signal) => new Promise((r
   child.once('close', code => {
     clearTimeout(timer); clearTimeout(killTimer); signal.removeEventListener('abort', abort)
     const result = Buffer.concat(chunks); for (const chunk of chunks) chunk.fill(0)
-    if (code || failed || signal.aborted) { result.fill(0); reject(new SigninFault('key')) } else resolve(result)
+    if (code || failed || signal.aborted) {
+      result.fill(0)
+      // security exits with the low byte of OSStatus: errSecAuthFailed (-25293) / errSecUserCanceled (-128).
+      const denied = file === '/usr/bin/security' && !failed && !signal.aborted && (code === 51 || code === 128)
+      reject(new SigninFault(denied ? 'keychain' : 'key', { service: args[args.indexOf('-s') + 1] }))
+    } else resolve(result)
   })
   child.stdin.end(input)
 })
@@ -40,7 +45,7 @@ export async function unprotect(value: Buffer, machine: Machine, signal: AbortSi
 }
 export class OsSecrets {
   private keys = new Map<string, Buffer>()
-  private macFailures = new Set<string>()
+  private macFailures = new Map<string, SigninFault>()
   constructor(private machine: Machine, private signal: AbortSignal, private run: ToolRunner = runTool, private wallet = secretService) {}
   async macBatch(sources: Source[]) {
     const items = new Map(sources.filter(s => s.family === 'chromium' && !s.unavailable && s.service && s.account).map(s => [s.service + '\0' + s.account, s]))
@@ -54,7 +59,7 @@ export class OsSecrets {
         const end = password.length && password[password.length - 1] === 10 ? password.length - 1 : password.length
         check(this.signal)
         this.keys.set(id, pbkdf2Sync(password.subarray(0, end), 'saltysalt', 1003, 16, 'sha1'))
-      } catch { this.macFailures.add(id) } finally { password?.fill(0) }
+      } catch (error) { this.macFailures.set(id, error instanceof SigninFault ? error : new SigninFault('key')) } finally { password?.fill(0) }
     }))
   }
   async chromiumKey(source: Source, envelope: 'v10' | 'v11') {
@@ -62,7 +67,7 @@ export class OsSecrets {
     if (this.machine.platform === 'darwin') {
       if (envelope !== 'v10') throw new SigninFault('format')
       const key = this.keys.get(source.service + '\0' + source.account)
-      if (!key) throw new SigninFault('key')
+      if (!key) throw this.macFailures.get(source.service + '\0' + source.account) ?? new SigninFault('key')
       return key
     }
     if (this.machine.platform === 'win32') {

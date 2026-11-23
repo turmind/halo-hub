@@ -43,6 +43,7 @@ function target() {
     },
   }) as unknown as BrowserContext
   const target: import('../signin-service.js').SigninCommit = {
+    tabId: () => 'fixture-tab',
     async withContext(work) {
       if (state.rejectCleanup && controller.signal.aborted) throw new Error(canary)
       const count = ++state.contexts
