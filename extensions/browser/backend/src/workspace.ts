@@ -373,17 +373,39 @@ export class WorkspaceBrowser {
     const normalizedPasswords = [...new Set(variants.map(normalizeContent).filter(Boolean))].sort((a, b) => b.length - a.length)
     result.title = normalizeContent(result.title)
     for (const password of normalizedPasswords) result.title = result.title.split(password).join('••••')
-    const matches = (value: string) => normalizedPasswords.some(password => normalizeContent(value).includes(password))
-    const decode = (value: string) => { try { return decodeURIComponent(value) } catch { return value } }
+    const lenientDecode = (value: string) => value.replace(/(?:%[0-9a-f]{2})+/gi, encoded => {
+      let decoded = ''
+      for (let index = 0; index < encoded.length;) {
+        const byte = parseInt(encoded.slice(index + 1, index + 3), 16)
+        const length = byte < 0x80 ? 3 : byte >= 0xc2 && byte <= 0xdf ? 6 : byte >= 0xe0 && byte <= 0xef ? 9 : byte >= 0xf0 && byte <= 0xf4 ? 12 : 3
+        // Decode one UTF-8 character at a time so a malformed byte cannot hide valid text after it.
+        const sequence = encoded.slice(index, index + length)
+        try { decoded += decodeURIComponent(sequence); index += sequence.length }
+        catch { decoded += encoded.slice(index, index + 3); index += 3 }
+      }
+      return decoded
+    })
+    const urlPasswords = [...new Set(variants.map(value => normalizeContent(lenientDecode(value))).filter(Boolean))]
+    const queryPasswords = [...new Set(variants.map(value => normalizeContent(lenientDecode(value.replace(/\+/g, ' ')))).filter(Boolean))]
+    const matches = (value: string, form = false) => {
+      const raw = normalizeContent(value)
+      const decoded = normalizeContent(lenientDecode(form ? value.replace(/\+/g, ' ') : value))
+      return normalizedPasswords.some(password => raw.includes(password) || decoded.includes(password))
+        || (form ? queryPasswords : urlPasswords).some(password => decoded.includes(password))
+    }
     try {
       const url = new URL(result.url)
-      url.pathname = url.pathname.split('/').map(segment => matches(decode(segment)) ? '••••' : segment).join('/')
-      const params = [...url.searchParams]
-      if (params.some(([key, value]) => matches(key) || matches(value))) {
-        url.search = ''
-        for (const [key, value] of params) url.searchParams.append(matches(key) ? '••••' : key, matches(value) ? '••••' : value)
-      }
-      if (matches(decode(url.hash.slice(1)))) url.hash = '••••'
+      url.pathname = url.pathname.split('/').map(segment => matches(segment) ? '••••' : segment).join('/')
+      // Keep raw query components: URLSearchParams would lose literal '+' and malformed byte spellings.
+      const search = url.search.slice(1)
+      const maskedSearch = search.split('&').map(param => {
+        const equals = param.indexOf('=')
+        if (equals < 0) return matches(param, true) ? '••••' : param
+        const key = param.slice(0, equals); const value = param.slice(equals + 1)
+        return (matches(key, true) ? '••••' : key) + '=' + (matches(value, true) ? '••••' : value)
+      }).join('&')
+      if (maskedSearch !== search) url.search = '?' + maskedSearch
+      if (matches(url.hash.slice(1))) url.hash = '••••'
       result.url = url.href
     } catch { result.url = 'about:blank' }
     // ARIA quotes values and derived names. Include each variant's escaped spellings too.

@@ -134,7 +134,11 @@ test('URL components and title match in decoded and normalized spaces', async t 
   await http(f.socket, caller, '/command', { id: 'open', op: 'open', args: { url: f.origin } })
   const page = f.contexts[0].pages()[0]
   const read = () => http(f.socket, caller, '/command', { id: crypto.randomUUID(), op: 'read', args: {} })
-  for (const password of ["'", '["', '|"', 'SPACE CANARY', 'quote"CANARY', '中文口令']) await t.test(`URL serialization ${JSON.stringify(password)}`, async () => {
+  for (const password of [
+    "'", '["', '|"', 'SPACE CANARY', 'quote"CANARY', '中文口令',
+    'P%20CANARY', 'P%zz中文CANARY', 'P%25CANARY', 'P+CANARY',
+    'P%FF中文CANARY', 'P%C2中文CANARY', 'P%E0%80%80中文CANARY', 'P%F0%9F%98%80CANARY',
+  ]) await t.test(`URL serialization ${JSON.stringify(password)}`, async () => {
     await page.setContent('<input type="password">'); await page.locator('input').fill(password)
     await page.evaluate(password => {
       const url = new URL(location.href)
@@ -152,6 +156,30 @@ test('URL components and title match in decoded and normalized spaces', async t 
     const lower = page.url().replace(/%[0-9A-F]{2}/g, hex => hex.toLowerCase())
     await page.evaluate(url => history.replaceState(null, '', url), lower)
     assert.deepEqual([...new URL((await read()).body.result.url).searchParams], [['••••', '••••']])
+  })
+  await t.test('literal plus through location.search uses form decoding on both sides', async () => {
+    const password = 'P+%zz中文CANARY'
+    await page.goto(f.origin)
+    await Promise.all([
+      page.waitForURL(url => url.search.includes('CANARY')),
+      page.evaluate(password => { location.search = '?' + password + '=' + password + '&keep=a+b&keep=%zz' }, password),
+    ])
+    assert.match(page.url(), /P\+%zz%E4%B8%AD%E6%96%87CANARY/)
+    await page.setContent('<input type="password">'); await page.locator('input').fill(password)
+    const response = await read(); assert.equal(response.body.ok, true)
+    const url = new URL(response.body.result.url)
+    assert.deepEqual([...url.searchParams], [['••••', '••••'], ['keep', 'a b'], ['keep', '%zz']])
+    assert.ok(url.search.endsWith('&keep=a+b&keep=%zz'))
+    assert.equal(await page.locator('input').inputValue(), password)
+  })
+  await t.test('masking preserves raw query delimiters and unrelated malformed bytes', async () => {
+    await page.setContent('<input type="password" value="P%20CANARY">')
+    await page.evaluate(() => history.replaceState(null, '', '/keep??keep=%FF&&P%20CANARY&secret=P%20CANARY&keep=last'))
+    const response = await read(); assert.equal(response.body.ok, true)
+    const url = new URL(response.body.result.url)
+    assert.equal(url.search, '??keep=%FF&&%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2&secret=%E2%80%A2%E2%80%A2%E2%80%A2%E2%80%A2&keep=last')
+    await page.evaluate(() => history.replaceState(null, '', '/keep?'))
+    assert.ok((await read()).body.result.url.endsWith('/keep?'))
   })
   await t.test('GET form plus encoding is decoded before matching', async () => {
     await page.goto(f.origin)
